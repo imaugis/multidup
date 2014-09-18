@@ -1,8 +1,56 @@
-#!/usr/bin/python3
+#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
-import sys
-import os
+import sys,os,re,commands
 
 entree="/dev/sdb"
 sorties=["/dev/sdc"]
+partition=entree
 
+#import commands
+#sfdisk_output = commands.getoutput("sfdisk -d %s" % entree)
+#followed by some specialized code to parse the output of 'fdisk -l'
+#The following code is not at all tested, but might do the trick.
+
+# python parse_fdisk.py
+sfdisk_output="""/dev/sdb1 : start=       63, size= 23439454, Id=83, bootable
+/dev/sdb2 : start= 23439548, size=  3908110, Id=82
+/dev/sdb3 : start= 27347658, size= 50808630, Id=83
+/dev/sdb4 : start=        0, size=        0, Id= 0
+"""
+
+# This source code is placed in the public domain
+def parse_fdisk(fdisk_output):
+	result = {}
+	inf={}
+	for line in fdisk_output.split("\n"):
+		if line.startswith("/"):
+			parts = re.split(':|,|=|\n| ',line)
+
+			infos = {
+				'start': parts[parts.index('start')+1],
+				'start': parts[parts.index('size')+1],
+
+
+			}
+			if parts[1] == "*":
+			inf['bootable'] = True
+			del parts[1]
+		else:
+			inf['bootable'] = False
+
+		inf['start'] = int(parts[1])
+		inf['end'] = int(parts[2])
+		inf['blocks'] = int(parts[3].rstrip("+"))
+		inf['partition_id'] = int(parts[4], 16)
+		inf['partition_id_string'] = " ".join(parts[5:])
+
+	result[parts[0]] = inf
+	return result
+
+def main():
+	fdisk_output = commands.getoutput("fdisk -l /dev/hda")
+	for disk, info in parse_fdisk(fdisk_output).items():
+		print (disk, " ".join(["%s=%r" % i for i in info.items()]))
+
+if __name__ == '__main__':
+	main()
