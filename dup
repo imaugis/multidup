@@ -18,13 +18,23 @@ def lit_parts(disque):
 				inf[int(dev)]={'start':int(start), 'size':int(size), 'Id':identification, 'bootable': True if bootable else False}
 	return inf
 
+def conv_part(com_sfdisk):
+	partitions=sorted(parts.keys())
+
 def main():
 	parts=lit_parts(entree)
 	partitions=sorted(parts.keys())
 	for nsortie in sorties:
 		com_sfdisk='unit: sectors\n'
+		derniere_part=0
 		for npart in partitions:
-			com_sfdisk += '%s%s : start=%s,size=%s,Id=%s%s\n' % (nsortie,npart,parts[npart]['start'],parts[npart]['size'],parts[npart]['Id'],',bootable' if parts[npart]['bootable']else '')
+			if parts[npart]['Id']=='82':
+				derniere_part=npart
+		for npart in partitions:
+			if npart == derniere_part:
+				com_sfdisk += '%s%s : start=%s,,Id=%s%s\n' % (nsortie,npart,parts[npart]['start'],parts[npart]['Id'],',bootable' if parts[npart]['bootable']else '')
+			else
+				com_sfdisk += '%s%s : start=%s,size=%s,Id=%s%s\n' % (nsortie,npart,parts[npart]['start'],parts[npart]['size'],parts[npart]['Id'],',bootable' if parts[npart]['bootable']else '')
 		print(com_sfdisk)
 
 if __name__ == '__main__':
