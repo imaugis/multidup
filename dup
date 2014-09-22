@@ -3,8 +3,24 @@
 import sys,os,re,commands
 
 entree="/dev/sdb"
-sorties=["/dev/sdc",]
+sorties=["/dev/sdc"]
 partition=entree
+disques_sortie=[]
+
+class Partition:
+	"""descriptif de chaque partition"""
+	def __init__(self,part,start,size,Id):
+		self.start=start
+		self.size=size
+		self.Id=Id
+		if Id=='83':
+			blkid = commands.getoutput("blkid %s" % part)	# on lit l'UUID et le système de fichier
+			rex=re.compile("UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
+			resultat=rex.search(blkid)
+			self.uuid,self.filesytem=resultat.groups()
+		else:
+			self.uuid,self.filesytem='',''
+		print('partition %s, UUID=%s, filesytem=%s %s' % (part,self.uuid,self.Id,self.filesytem))
 
 def lit_parts(disque):
 	inf={}
@@ -16,6 +32,7 @@ def lit_parts(disque):
 			dev,start,size,identification,bootable=parts.groups()
 			if int(size) != 0:
 				inf[int(dev)]={'start':int(start), 'size':int(size), 'Id':identification, 'bootable': True if bootable else False}
+				p=Partition('%s%s'%(disque,dev),int(start),int(size),identification)
 	return inf
 
 def conv_part(com_sfdisk):
