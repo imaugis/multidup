@@ -20,6 +20,7 @@ def lit_parts(disque):
 
 def conv_part(com_sfdisk):
 	partitions=sorted(parts.keys())
+	np=0
 
 def main():
 	parts=lit_parts(entree)
@@ -33,7 +34,7 @@ def main():
 		for npart in partitions:
 			if npart == derniere_part:
 				com_sfdisk += '%s%s : start=%s,,Id=%s%s\n' % (nsortie,npart,parts[npart]['start'],parts[npart]['Id'],',bootable' if parts[npart]['bootable']else '')
-			else
+			else:
 				com_sfdisk += '%s%s : start=%s,size=%s,Id=%s%s\n' % (nsortie,npart,parts[npart]['start'],parts[npart]['size'],parts[npart]['Id'],',bootable' if parts[npart]['bootable']else '')
 		print(com_sfdisk)
 
