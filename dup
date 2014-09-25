@@ -22,6 +22,17 @@ class Partition:
 			self.uuid,self.filesytem='',''
 		print('partition %s, UUID=%s, filesytem=%s %s' % (part,self.uuid,self.Id,self.filesytem))
 
+class Disque:
+	def __init__(self,disque=''):
+		self.device=''
+		self.nbre_secteurs=0
+		self.taille_secteur=0
+		self.liste_part=[]
+		if disque != '':
+			s=commands.getoutput("fdisk -l %s" % disque)
+			for l in s.split('\n'):
+				if l[:1].isdigit()
+			
 def lit_parts(disque):
 	inf={}
 	sfdisk_output = commands.getoutput("sfdisk -d %s" % disque)	# on lit la table de partition du disque
