@@ -22,7 +22,6 @@ disques_sortie=[]
 class Partition:
 	"""descriptif de chaque partition"""
 	def __init__(self,part):
-		rex=re.compile("^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?")
 		self.npart=0
 		self.start=0
 		self.size=0
@@ -31,16 +30,17 @@ class Partition:
 		self.filesytem=''
 		self.uuid=''
 
-		parts = rex.search(part)
+		parts = re.compile("^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
 		self.npart,self.start,self.size,self.Id,self.bootable=parts.groups()
 
-		if self.Id=='83':
-			blkid = commands.getoutput("blkid %s" % part)	# on lit l'UUID et le système de fichier
+		blkid = commands.getoutput("blkid %s" % part)	# on lit l'UUID et le système de fichier
+		if blkid:
 			rex=re.compile("UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
 			resultat=rex.search(blkid)
 			self.uuid,self.filesytem=resultat.groups()
-		else:
-			self.uuid,self.filesytem='',''
+
+	def taille(self):
+		return self.size		# retourne la taille de la partition
 
 	def __repr__(self):
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
@@ -67,7 +67,10 @@ class Disque:
 			sfdisk_output = commands.getoutput("sfdisk -d %s" % disque)	# on lit la table de partition du disque
 			for line in sfdisk_output.split("\n"):			# on lit ligne par ligne
 				if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
-					self.liste_part.append(Partition(line))
+					p=Partition(line)
+					if p.taille() != '0':					# si la partition n'est pas vide
+						self.liste_part.append(p)
+
 
 	def __repr__(self):
 		s=''
