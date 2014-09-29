@@ -22,6 +22,7 @@ disques_sortie=[]
 class Partition:
 	"""descriptif de chaque partition"""
 	def __init__(self,part):
+		""" part: /dev/sdXN  ex: /dev/sdb1"""
 		self.npart=0
 		self.start=0
 		self.size=0
@@ -47,8 +48,8 @@ class Partition:
 
 
 class Disque:
-	def __init__(self,disque=''):
-		self.device=disque
+	def lit_disque(self,disque):
+		self.device=disque 			# /dev/sdX
 		self.nbre_secteurs=0
 		self.nbre_cylindres=0
 		#self.taille_secteur=512
@@ -64,12 +65,19 @@ class Disque:
 					self.nbre_tetes,self.nbre_sect_piste,self.nbre_cylindres,self.nbre_secteurs=resultat.groups()
 					break
 
+	def __init_(self,disque):
+		lit_disque(disque)
+		if disque != '':
 			sfdisk_output = commands.getoutput("sfdisk -d %s" % disque)	# on lit la table de partition du disque
-			for line in sfdisk_output.split("\n"):			# on lit ligne par ligne
+			for line in sfdisk_output.split("\n"):			# on explore ligne par ligne
 				if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
 					p=Partition(line)
 					if p.taille() != '0':					# si la partition n'est pas vide
 						self.liste_part.append(p)
+
+	def copie_parts(self,disque):
+		self.liste_part=[]
+		for l in
 
 
 	def __repr__(self):
