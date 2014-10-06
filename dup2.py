@@ -14,6 +14,7 @@ on impose à la destination d'avoir le même UUID que l'original pour faciliter 
 
 import sys,os,re,commands
 from copy import deepcopy
+import subprocess
 
 entree="/dev/sdb"
 sorties=["/dev/sdc"]
@@ -48,7 +49,7 @@ class Partition:
 		return self.size		# retourne la taille de la partition
 
 	def sfdisk_conv(self,taille_cyl):
-		print self.size, type(self.size)
+		#print self.size, type(self.size)
 		""" convertit en format compatible avec sfdisk en entree pour pouvoir créer les partitions sur le Disque destination """
 		s=",{},{}".format(self.size/taille_cyl if self.size!=0 else '','S' if self.Id=='82' else 'L')
 		if self.bootable=='bootable':
@@ -108,6 +109,18 @@ class Disque:
 			s+=p.sfdisk_conv(self.taille_cylindre)
 		return s
 
+	def copy_mbr(self,disk):
+		""" copie le MBR depuis le disk vers le disque courant """
+		#if type(disk) != Disque:
+		#	raise ValueError("erreur de paramètre disk")
+
+		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
+		print(type(disk))
+		print("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
+
+	def set_partitions(self):
+		print(['sfdisk',self.device,'<< EOF',self.sfdisk_conv()+'EOF\n'])
+
 	def __repr__(self):
 		s=''
 		for p in self.liste_part:
@@ -122,7 +135,8 @@ class Disque:
 def main():
 	i=Disque(entree)
 	o=Disque(sorties[0],i)
-	print o.device
+	o.copy_mbr(i)
+	o.set_partitions()
 
 if __name__ == '__main__':
 	main()
