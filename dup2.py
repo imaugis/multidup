@@ -57,10 +57,14 @@ class Partition:
 		s+='\n'
 		return s
 
-	def set_UUID(self,device):
-		print('set UUID partition ', device.device, self.npart)
+	def format(self,device):
+		print('formatte partition ', device, self.npart)
 		if self.Id == '82':
-			p = subprocess.call()
+			p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
+			#print (['mkswap','-U',self.uuid,device+str(self.npart)])
+		elif self.Id == '83':
+			p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+			#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
 
 	def __repr__(self):
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
@@ -129,6 +133,9 @@ class Disque:
 		command = ["sfdisk", self.device ]
 		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		(output, errors) = pobj.communicate(instructions)
+		print('formatte les partitions')
+		for p in self.liste_part:
+			p.format(self.device)
 
 	def __repr__(self):
 		s=''
