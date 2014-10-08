@@ -57,6 +57,11 @@ class Partition:
 		s+='\n'
 		return s
 
+	def set_UUID(self,device):
+		print('set UUID partition ', device.device, self.npart)
+		if self.Id == '82':
+			p = subprocess.call()
+
 	def __repr__(self):
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
 
@@ -114,12 +119,16 @@ class Disque:
 		#if type(disk) != Disque:
 		#	raise ValueError("erreur de paramètre disk")
 
+		# on copie le secteur 0 complet, en écrasant la table de partition
+		print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
 		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
-		print(type(disk))
-		print("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
 
 	def set_partitions(self):
-		print(['sfdisk',self.device,'<< EOF',self.sfdisk_conv()+'EOF\n'])
+		print('crée une nouvelle table de partitions sur ',self.device)
+		instructions = self.sfdisk_conv()
+		command = ["sfdisk", self.device ]
+		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		(output, errors) = pobj.communicate(instructions)
 
 	def __repr__(self):
 		s=''
@@ -140,3 +149,4 @@ def main():
 
 if __name__ == '__main__':
 	main()
+#rsync -axHAXP a b
