@@ -64,7 +64,7 @@ class Partition:
 
 	def format(self,device):
 		""" formatte la partition en mettant l'UUID d'origine """
-		print('formatte partition ', device, self.npart)
+		print('formatte partition {}{}'.format(device, self.npart))
 		if self.Id == '82':
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
@@ -80,18 +80,17 @@ class Partition:
 
 	def mount(self,device):
 		# on monte la partition
-		if self.mounted == '' && self.Id == '83':
-			self.mounted = tempfile.mkdtemp()
-			os.mkdir(self.mounted)
-			if debug:
-				self.debug_part = device + str(npart)
-				print('monte la partition {} dans {}'.format(debug_part, self.mounted))
-
-			else
-				p = subprocess.Popen(['mount',self.uuid,device+str(self.npart), self.mounted])
+		if self.mounted == '':
+			if self.Id == '83':
+				self.mounted = tempfile.mkdtemp()
+				if debug:
+					self.debug_part = device + str(self.npart)
+					print('monte la partition {} dans {}'.format(self.debug_part, self.mounted))
+				else:
+					p = subprocess.Popen(['mount',device+str(self.npart), self.mounted])
 
 	def umount(self):
-		if self.mounted:
+		if self.mounted != '':
 			if debug:
 				print('demonte la partition {}'.format(self.debug_part))
 			p = subprocess.Popen(['umount', self.mounted])
@@ -168,10 +167,11 @@ class Disque:
 		""" copie le MBR depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
 		print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
-		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
+		if not debug:
+			s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
 
 	def set_partitions(self):
-		print('crée une nouvelle table de partitions sur ',self.device)
+		print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
 		command = ["sfdisk", self.device ]
 		if not debug:
@@ -197,7 +197,12 @@ class Disque:
 	def mount(self):
 		""" monte les partitions du disque """
 		for part in self.liste_part:
-			part.mount()
+			part.mount(self.device)
+
+	def umount(self):
+		""" démonte les partitions du disque """
+		for part in self.liste_part:
+			part.umount()
 
 	def __repr__(self):
 		s=''
