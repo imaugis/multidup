@@ -24,19 +24,22 @@ sorties=["/dev/sdc"]
 partition=entree
 disques_sortie=[]
 
+def ls():
+	p = subprocess.Popen(['ls','/tmp'])
+
 class Partition:
 	"""descriptif de chaque partition"""
 	def __init__(self,part):
 		""" part: /dev/sdXN  ex: /dev/sdb1"""
-		self.npart=0
-		self.start=0
-		self.size=0
-		self.Id=0
-		self.bootable=''
-		self.filesytem=''
-		self.uuid=''
+		self.npart = 0
+		self.start = 0
+		self.size = 0
+		self.Id = 0
+		self.bootable  = ''
+		self.filesytem = ''
+		self.uuid = ''
 
-		self.mounted=''		# représente le répertoire monté de cette partition
+		self.mounted = ''		# représente le répertoire monté de cette partition
 
 		parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
 		self.npart,self.start,self.size,self.Id,self.bootable=parts.groups()
@@ -64,7 +67,7 @@ class Partition:
 
 	def format(self,device):
 		""" formatte la partition en mettant l'UUID d'origine """
-		print('formatte partition {}{}'.format(device, self.npart))
+		#print('formatte partition {}{}'.format(device, self.npart))
 		if self.Id == '82':
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
@@ -83,18 +86,19 @@ class Partition:
 		if self.mounted == '':
 			if self.Id == '83':
 				self.mounted = tempfile.mkdtemp()
+				print 'on vient de créer',self.mounted
 				if debug:
 					self.debug_part = device + str(self.npart)
-					print('monte la partition {} dans {}'.format(self.debug_part, self.mounted))
-				else:
-					p = subprocess.Popen(['mount',device+str(self.npart), self.mounted])
+					print('monte la partition {} dans -{}-'.format(self.debug_part, self.mounted))
+				p = subprocess.Popen(['mount',device+str(self.npart), self.mounted])
+				print (['mount',device+str(self.npart), self.mounted])
 
 	def umount(self):
-		if self.mounted != '':
+		if self.mounted:
 			if debug:
 				print('demonte la partition {}'.format(self.debug_part))
 			p = subprocess.Popen(['umount', self.mounted])
-			os.rmdir(self.mounted)
+			#os.rmdir(self.mounted)
 			self.mounted = ''
 
 	def copy(self,device,part):
@@ -110,6 +114,9 @@ class Partition:
 				p = subprocess.Popen(['rsync', '-axHAXP', part.mounted, self.mounted])
 			# on démonte la partition
 			self.umount()
+
+	def __del__(self):
+		self.umount()
 
 	def __repr__(self):
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
@@ -131,7 +138,7 @@ class Disque:
 					self.taille_cylindre=self.nbre_sect_piste * self.nbre_tetes
 					break
 
-	def __init__(self,disk,origin=None):
+	def __init__(self,disk,origin=None, option=None):
 		if disk=='':
 			raise ValueError("erreur de paramètre disk")
 
@@ -204,6 +211,9 @@ class Disque:
 		for part in self.liste_part:
 			part.umount()
 
+	def __del__(self):
+		self.umount()
+
 	def __repr__(self):
 		s=''
 		for p in self.liste_part:
@@ -216,10 +226,9 @@ class Disque:
 				s)
 
 def main():
-	i=Disque(entree)
+	i=Disque(entree, option='ro')
 	o=Disque(sorties[0],i)
 	o.copy(i)
-	i.umount()
 
 if __name__ == '__main__':
 	main()
