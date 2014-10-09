@@ -15,6 +15,9 @@ on impose à la destination d'avoir le même UUID que l'original pour faciliter 
 import sys,os,re,commands
 from copy import deepcopy
 import subprocess
+import tempfile
+
+debug = True
 
 entree="/dev/sdb"
 sorties=["/dev/sdc"]
@@ -32,6 +35,8 @@ class Partition:
 		self.bootable=''
 		self.filesytem=''
 		self.uuid=''
+
+		self.mounted=''		# représente le répertoire monté de cette partition
 
 		parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
 		self.npart,self.start,self.size,self.Id,self.bootable=parts.groups()
@@ -58,13 +63,54 @@ class Partition:
 		return s
 
 	def format(self,device):
+		""" formatte la partition en mettant l'UUID d'origine """
 		print('formatte partition ', device, self.npart)
 		if self.Id == '82':
-			p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
-			#print (['mkswap','-U',self.uuid,device+str(self.npart)])
+			if debug:
+				print ('crée le swap sur {}{}'.format(device, self.npart))
+			else:
+				p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
+				#print (['mkswap','-U',self.uuid,device+str(self.npart)])
 		elif self.Id == '83':
-			p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
-			#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+			if debug:
+				print ('crée la partition en {} sur {}{}'.format(self.filesytem, device, self.npart))
+			else:
+				p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+				#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+
+	def mount(self,device):
+		# on monte la partition
+		if self.mounted == '' && self.Id == '83':
+			self.mounted = tempfile.mkdtemp()
+			os.mkdir(self.mounted)
+			if debug:
+				self.debug_part = device + str(npart)
+				print('monte la partition {} dans {}'.format(debug_part, self.mounted))
+
+			else
+				p = subprocess.Popen(['mount',self.uuid,device+str(self.npart), self.mounted])
+
+	def umount(self):
+		if self.mounted:
+			if debug:
+				print('demonte la partition {}'.format(self.debug_part))
+			p = subprocess.Popen(['umount', self.mounted])
+			os.rmdir(self.mounted)
+			self.mounted = ''
+
+	def copy(self,device,part):
+		""" copie depuis la partition part vers la partition courante """
+		# on monte la partition
+		self.mount(device)
+
+		if self.mounted:
+			if debug:
+				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
+			else:
+				# copie
+				p = subprocess.Popen(['rsync', '-axHAXP', part.mounted, self.mounted])
+			# on démonte la partition
+			self.umount()
 
 	def __repr__(self):
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
@@ -120,9 +166,6 @@ class Disque:
 
 	def copy_mbr(self,disk):
 		""" copie le MBR depuis le disk vers le disque courant """
-		#if type(disk) != Disque:
-		#	raise ValueError("erreur de paramètre disk")
-
 		# on copie le secteur 0 complet, en écrasant la table de partition
 		print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
 		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
@@ -131,11 +174,30 @@ class Disque:
 		print('crée une nouvelle table de partitions sur ',self.device)
 		instructions = self.sfdisk_conv()
 		command = ["sfdisk", self.device ]
-		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-		(output, errors) = pobj.communicate(instructions)
+		if not debug:
+			pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+			(output, errors) = pobj.communicate(instructions)
 		print('formatte les partitions')
 		for p in self.liste_part:
 			p.format(self.device)
+
+	def copy(self,disk):
+		""" on fait la copie depuis disk vers le disque courant """
+		# on s'assure que disk est monté
+		disk.mount()
+		# copie du mbr
+		self.copy_mbr(disk)
+		# conversion des partitions pour le disque courant, formattage des partitions
+		self.set_partitions()
+		# copie des partitions (sauf le swap)
+		for index in range(len(disk.liste_part)):
+			self.liste_part[index].copy(self.device, disk.liste_part[index])
+
+
+	def mount(self):
+		""" monte les partitions du disque """
+		for part in self.liste_part:
+			part.mount()
 
 	def __repr__(self):
 		s=''
@@ -151,9 +213,9 @@ class Disque:
 def main():
 	i=Disque(entree)
 	o=Disque(sorties[0],i)
-	o.copy_mbr(i)
-	o.set_partitions()
+	o.copy(i)
+	i.umount()
 
 if __name__ == '__main__':
 	main()
-#rsync -axHAXP a b
+
