@@ -72,19 +72,17 @@ class Partition:
 		if self.Id == '82':
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
-			else:
-				p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
-				p.wait()
-				#print (['mkswap','-U',self.uuid,device+str(self.npart)])
+			p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
+			p.wait()
+			#print (['mkswap','-U',self.uuid,device+str(self.npart)])
 		elif self.Id == '83':
 			if debug:
 				print ('crée la partition en {} sur {}{}'.format(self.filesytem, device, self.npart))
-			else:
-				p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
-				p.wait()
-				#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+			p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+			p.wait()
+			#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
 
-	def mount(self,device):
+	def mount(self,device,option=''):
 		# on monte la partition
 		if self.mounted == '':
 			if self.Id == '83':
@@ -92,18 +90,24 @@ class Partition:
 				print 'on vient de créer',self.mounted
 				if debug:
 					self.debug_part = device + str(self.npart)
-					print('monte la partition {} dans -{}-'.format(self.debug_part, self.mounted))
-				p = subprocess.Popen(['mount',device+str(self.npart), self.mounted])
+					print('monte la partition {} dans {}'.format(self.debug_part, self.mounted))
+				if option:
+					p = subprocess.Popen(['mount', '-o', option, device+str(self.npart), self.mounted])
+				else:
+					p = subprocess.Popen(['mount', device+str(self.npart), self.mounted])
 				p.wait()
-				print (['mount',device+str(self.npart), self.mounted])
+				#print (['mount',device+str(self.npart), self.mounted])
 
 	def umount(self):
 		if self.mounted:
 			if debug:
 				print('demonte la partition {}'.format(self.debug_part))
+
+			p = subprocess.Popen(['sync'])
+			p.wait()
 			p = subprocess.Popen(['umount', self.mounted])
 			p.wait()
-			#os.rmdir(self.mounted)
+			os.rmdir(self.mounted)
 			self.mounted = ''
 
 	def copy(self,device,part):
@@ -114,10 +118,9 @@ class Partition:
 		if self.mounted:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
-			else:
-				# copie
-				p = subprocess.Popen(['rsync', '-axHAXP', part.mounted, self.mounted])
-				p.wait()
+			# copie
+			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted])
+			p.wait()
 			# on démonte la partition
 			self.umount()
 
@@ -144,10 +147,7 @@ class Disque:
 					self.taille_cylindre=self.nbre_sect_piste * self.nbre_tetes
 					break
 
-	def __init__(self,disk,origin=None, option=None):
-		if disk=='':
-			raise ValueError("erreur de paramètre disk")
-
+	def __init__(self,disk,origin=None, option=''):
 		self.device=disk 			# /dev/sdX
 		self.nbre_secteurs=0		# nbre de secteurs du disque
 		self.nbre_cylindres=0		# nbre de cylindres
@@ -156,6 +156,7 @@ class Disque:
 		self.nbre_tetes=0
 		self.taille_cylindre=0
 		self.liste_part=[]
+		self.mount_option=option
 
 		self.lit_disque(disk)
 		if origin == None:
@@ -179,19 +180,19 @@ class Disque:
 	def copy_mbr(self,disk):
 		""" copie le MBR depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
-		print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
-		if not debug:
-			s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count=1")
+		if debug:
+			print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
+		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=446 count=1")
 
 	def set_partitions(self):
 		print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
 		command = ["sfdisk", self.device ]
-		if not debug:
-			pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-			(output, errors) = pobj.communicate(instructions)
-			pobj.wait()
-		print('formatte les partitions')
+		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		(output, errors) = pobj.communicate(instructions)
+		pobj.wait()
+		if debug:
+			print('formatte les partitions')
 		for p in self.liste_part:
 			p.format(self.device)
 
@@ -211,7 +212,7 @@ class Disque:
 	def mount(self):
 		""" monte les partitions du disque """
 		for part in self.liste_part:
-			part.mount(self.device)
+			part.mount(self.device,option=self.mount_option)
 
 	def umount(self):
 		""" démonte les partitions du disque """
