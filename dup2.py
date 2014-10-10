@@ -26,6 +26,7 @@ disques_sortie=[]
 
 def ls():
 	p = subprocess.Popen(['ls','/tmp'])
+	p.wait()
 
 class Partition:
 	"""descriptif de chaque partition"""
@@ -73,12 +74,14 @@ class Partition:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
 			else:
 				p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
+				p.wait()
 				#print (['mkswap','-U',self.uuid,device+str(self.npart)])
 		elif self.Id == '83':
 			if debug:
 				print ('crée la partition en {} sur {}{}'.format(self.filesytem, device, self.npart))
 			else:
 				p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
+				p.wait()
 				#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
 
 	def mount(self,device):
@@ -91,6 +94,7 @@ class Partition:
 					self.debug_part = device + str(self.npart)
 					print('monte la partition {} dans -{}-'.format(self.debug_part, self.mounted))
 				p = subprocess.Popen(['mount',device+str(self.npart), self.mounted])
+				p.wait()
 				print (['mount',device+str(self.npart), self.mounted])
 
 	def umount(self):
@@ -98,6 +102,7 @@ class Partition:
 			if debug:
 				print('demonte la partition {}'.format(self.debug_part))
 			p = subprocess.Popen(['umount', self.mounted])
+			p.wait()
 			#os.rmdir(self.mounted)
 			self.mounted = ''
 
@@ -112,6 +117,7 @@ class Partition:
 			else:
 				# copie
 				p = subprocess.Popen(['rsync', '-axHAXP', part.mounted, self.mounted])
+				p.wait()
 			# on démonte la partition
 			self.umount()
 
@@ -184,6 +190,7 @@ class Disque:
 		if not debug:
 			pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 			(output, errors) = pobj.communicate(instructions)
+			pobj.wait()
 		print('formatte les partitions')
 		for p in self.liste_part:
 			p.format(self.device)
