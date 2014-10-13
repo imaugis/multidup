@@ -178,12 +178,16 @@ class Disque:
 		return s
 
 	def copy_mbr(self,disk):
-		""" copie le MBR depuis le disk vers le disque courant """
+		""" copie le MBR et le stage1 de grub depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
+		# et aussi tous les secteurs soit-disant libre avant la première partition
+		nbs=disk.liste_part[0].start
 		if debug:
 			print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
-		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=446 count=1")
-
+		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count="+str(nbs))
+		p = subprocess.Popen(['sync'])
+		p.wait()
+			
 	def set_partitions(self):
 		print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
