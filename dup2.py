@@ -57,14 +57,11 @@ class Partition:
 	def taille(self):
 		return self.size		# retourne la taille de la partition
 
-	def sfdisk_conv(self,taille_cyl):
+	def sfdisk_conv(self,disk):
 		#print self.size, type(self.size)
 		""" convertit en format compatible avec sfdisk en entree pour pouvoir créer les partitions sur le Disque destination """
-		s=",{},{}".format(self.size/taille_cyl if self.size!=0 else '','S' if self.Id=='82' else 'L')
-		if self.bootable=='bootable':
-			s+=',*'
-		s+='\n'
-		return s
+		s="/dev/{}{} : start={}, size={}, Id={}{}\n".format(disk, str(self.npart), self.start, self.size if self.size !=0 else '', self.Id, ', bootable' if self.bootable else '')
+		return (self.npart,s)
 
 	def format(self,device):
 		""" formatte la partition en mettant l'UUID d'origine """
@@ -172,9 +169,17 @@ class Disque:
 
 	def sfdisk_conv(self):
 		""" convertit en format compatible avec sfdisk en entree pour pouvoir créer les partitions sur le Disque destination """
-		s=''
+		s='unit: sectors\n'
+		# /dev/sdb4 : start=        0, size=        0, Id= 0
+		part={}
 		for p in self.liste_part:
-			s+=p.sfdisk_conv(self.taille_cylindre)
+			n,s1=p.sfdisk_conv(self.device)
+			part[n]=s1
+		for n in [1,2,3,4]:  # vérifie s'il y a les 4 partitions, sinon en fait des vides
+			if n in part:
+				s += part[n]
+			else:
+				s += '/dev/{}{} : start= 0, size= 0, Id= 0\n'.format(self.device, n)
 		return s
 
 	def copy_mbr(self,disk):
