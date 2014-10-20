@@ -16,7 +16,6 @@ class Fen(QWidget):
 		self.label = QLabel('nombre de fichiers')
 		self.box.addRow(self.bouton, self.label)
 
-		self.hbox2 = QHBoxLayout()
 		self.bsortie = QPushButton("Quitte")
 		self.bstart = QPushButton("Start !")
 		self.bsortie.clicked.connect(self.close)

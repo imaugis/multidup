@@ -16,6 +16,8 @@ import sys,os,re,commands
 from copy import deepcopy
 import subprocess
 import tempfile
+from PyQt4.QtGui import *
+from PyQt4.QtCore import *
 
 debug = True
 
@@ -84,7 +86,7 @@ class Partition:
 		if self.mounted == '':
 			if self.Id == '83':
 				self.mounted = tempfile.mkdtemp()
-				print 'on vient de créer',self.mounted
+				#print 'on vient de créer',self.mounted
 				if debug:
 					self.debug_part = device + str(self.npart)
 					print('monte la partition {} dans {}'.format(self.debug_part, self.mounted))
@@ -121,6 +123,23 @@ class Partition:
 			# on démonte la partition
 			self.umount()
 
+	def compte(self, label, nbf):
+		""" compte le nombre de fichiers de la partition courante """
+		# la partition est censée avoir été montée en lecture seule
+		if self.mounted:	# on vérifie quand même
+			p = subprocess.Popen(['rsync', '-naxHAXP', self.mounted, '/tmp/rien'], stdout=subprocess.PIPE)
+			#p = subprocess.Popen(['rsync','-naxHAXP','/home','/tmp/ttttaaaa'], stdout=subprocess.PIPE)
+			c = 0
+			for line in p.stdout:
+				nbf += 1
+				c += 1
+				if c==123:
+					update_label(label, nbf)
+					c = 0
+			update_label(label, nbf)
+			errcode = p.returncode
+		return nbf
+
 	def __del__(self):
 		self.umount()
 
@@ -145,27 +164,28 @@ class Disque:
 					break
 
 	def __init__(self,disk,origin=None, option=''):
-		self.device=disk 			# /dev/sdX
-		self.nbre_secteurs=0		# nbre de secteurs du disque
-		self.nbre_cylindres=0		# nbre de cylindres
+		self.device = disk 			# /dev/sdX
+		self.nbre_secteurs = 0		# nbre de secteurs du disque
+		self.nbre_cylindres = 0		# nbre de cylindres
 		#self.taille_secteur=512
-		self.nbre_sect_piste=0		# nbre de secteurs par piste
-		self.nbre_tetes=0
-		self.taille_cylindre=0
-		self.liste_part=[]
-		self.mount_option=option
+		self.nbre_sect_piste = 0	# nbre de secteurs par piste
+		self.nbre_tetes = 0
+		self.taille_cylindre = 0
+		self.liste_part = []
+		self.mount_option = option
+		self.nbf = 0 				# nbre de fichiers à copier (pour la progress bar)
 
 		self.lit_disque(disk)
 		if origin == None:
 			sfdisk_output = commands.getoutput("sfdisk -d %s" % disk)	# on lit la table de partition du disque
 			for line in sfdisk_output.split("\n"):			# on explore ligne par ligne
 				if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
-					p=Partition(line)
+					p = Partition(line)
 					if p.taille() != 0:						# si la partition n'est pas vide
 						self.liste_part.append(p)
 		else :
-			self.liste_part=deepcopy(origin.liste_part)		# recopie de la liste de partition du disque d'origine
-			self.liste_part[-1].size=0						# on annule la taille de la dernière partition, ce qui permettra d'étendre cette partition autant que nécessaire
+			self.liste_part = deepcopy(origin.liste_part)		# recopie de la liste de partition du disque d'origine
+			self.liste_part[-1].size = 0						# on annule la taille de la dernière partition, ce qui permettra d'étendre cette partition autant que nécessaire
 
 	def sfdisk_conv(self):
 		""" convertit en format compatible avec sfdisk en entree pour pouvoir créer les partitions sur le Disque destination """
@@ -192,7 +212,7 @@ class Disque:
 		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count="+str(nbs))
 		p = subprocess.Popen(['sync'])
 		p.wait()
-			
+
 	def set_partitions(self):
 		print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
@@ -205,8 +225,11 @@ class Disque:
 		for p in self.liste_part:
 			p.format(self.device)
 
-	def copy(self,disk):
+	def copy(self,disk, progressbar):
 		""" on fait la copie depuis disk vers le disque courant """
+		print('copie')
+		nombre_fichiers = 0
+		progressbar.setRange(0,self.nbf)
 		# on s'assure que disk est monté
 		disk.mount()
 		# copie du mbr
@@ -215,8 +238,17 @@ class Disque:
 		self.set_partitions()
 		# copie des partitions (sauf le swap)
 		for index in range(len(disk.liste_part)):
-			self.liste_part[index].copy(self.device, disk.liste_part[index])
+			nombre_fichiers = self.liste_part[index].copy(self.device, disk.liste_part[index], progressbar, nombre_fichiers)
 
+	def compte(self,label):
+		""" compte le nombre de fichiers à copier dans le disque original """
+		# on s'assure que disk est monté
+		print('comptage')
+		self.mount()
+		self.nbf = 0 	# compteur de fichiers
+		for index in range(len(self.liste_part)):
+			self.nbf = self.liste_part[index].compte(label,self.nbf)
+		return self.nbf
 
 	def mount(self):
 		""" monte les partitions du disque """
@@ -242,11 +274,57 @@ class Disque:
 				"  cylindres: {}\n".format(self.nbre_cylindres) +
 				s)
 
-def main():
-	i=Disque(entree, option='ro')
-	o=Disque(sorties[0],i)
-	o.copy(i)
+def update_label(label, n):
+	label.setText(str(n))
+	QApplication.processEvents()
+
+def update_bar(bar, n):
+	bar.setValue(n)
+	QApplication.processEvents()
+
+class Fen(QWidget):
+	def __init__(self,parent=None):
+		super(Fen,self).__init__(parent)
+		self.box = QFormLayout(self)
+
+		self.bouton = QPushButton(QString.fromUtf8("lire qté de fichiers de /home"))
+		self.bouton.clicked.connect(self.compte)
+		self.label = QLabel('nombre de fichiers')
+		#self.quoi = QLabel('action en cours')
+		self.box.addRow(self.bouton, self.label)
+
+		self.bsortie = QPushButton("Quitte")
+		self.bstart = QPushButton("Start !")
+		self.bsortie.clicked.connect(self.close)
+		self.bstart.clicked.connect(self.start)
+		self.prog_bar = QProgressBar()
+		self.box.addRow(self.bstart, self.prog_bar)
+
+		self.box.addWidget(self.bsortie)
+		self.setLayout(self.box)
+
+		self.disk_entree = Disque(entree, option='ro')
+		#self.disk_sortie = Disque(sorties[0],self.disk_entree)
+
+	def compte(self):
+		self.disk_entree.compte(self.label)
+
+	def start(self):
+		self.disk_sortie = Disque(sorties[0],self.disk_entree)
+		self.disk_sortie.copy(self.disk_entree,self.progressbar)
+
+
+def main(args):
+	#chaque programme doit disposer d'une instance de QApplication gérant l'ensemble des widgets
+	app=QApplication(args)
+	#un nouveau bouton
+	fenetre = Fen()
+	fenetre.show()
+	app.exec_()
+
+	#i=Disque(entree, option='ro')
+	#o=Disque(sorties[0],i)
+	#o.copy(i)
 
 if __name__ == '__main__':
-	main()
-
+	main(sys.argv)
