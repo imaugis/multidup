@@ -32,7 +32,7 @@ class Fen(QWidget):
 
 	def compte(self):
 		self.nbf = 0
-		p = subprocess.Popen(['rsync','-naxHAXP','/','/tmp/ttttaaaa'], stdout=subprocess.PIPE)
+		p = subprocess.Popen(['rsync','-naxHAXP','/home','/tmp/ttttaaaa'], stdout=subprocess.PIPE)
 		c = 0
 		for line in p.stdout:
 			self.nbf += 1
