@@ -26,12 +26,21 @@ class Fen(QWidget):
 		self.box.addWidget(self.bsortie)
 		self.setLayout(self.box)
 
+	def update_label(self,n):
+		self.label.setText(str(n))
+		QApplication.processEvents()
+
 	def compte(self):
 		self.nbf = 0
-		p = subprocess.Popen(['rsync','-naxHAXP','/home','/tmp/ttttaaaa'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		p = subprocess.Popen(['rsync','-naxHAXP','/','/tmp/ttttaaaa'], stdout=subprocess.PIPE)
+		c = 0
 		for line in p.stdout:
 			self.nbf += 1
-			self.label.setText(str(self.nbf))
+			c += 1
+			if c==123:
+				self.update_label(self.nbf)
+				c = 0
+		self.update_label(self.nbf)
 		errcode = p.returncode
 
 def main(args) :
