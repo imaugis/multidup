@@ -41,6 +41,7 @@ class Partition:
 		self.bootable  = ''
 		self.filesytem = ''
 		self.uuid = ''
+		self.nbf = 0 			# nombre de fichiers de la partition
 
 		self.mounted = ''		# représente le répertoire monté de cette partition
 
@@ -98,7 +99,7 @@ class Partition:
 				#print (['mount',device+str(self.npart), self.mounted])
 
 	def umount(self):
-		if self.mounted:
+		if self.mounted != '':
 			if debug:
 				print('demonte la partition {}'.format(self.debug_part))
 
@@ -109,36 +110,47 @@ class Partition:
 			os.rmdir(self.mounted)
 			self.mounted = ''
 
-	def copy(self,device,part):
+	def copy(self,device,part, progressbar, nbfichiers):
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
 		self.mount(device)
-
 		if self.mounted:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
 			# copie
-			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted])
+			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
+			c = 0
+			for line in p.stdout:
+				nbfichiers += 1
+				c += 1
+				if c==100:
+					update_bar(progressbar, nbfichiers)
+					c = 0
+			update_bar(progressbar, nbfichiers)
+			#errcode = p.returncode
 			p.wait()
 			# on démonte la partition
 			self.umount()
+		return nbfichiers
 
-	def compte(self, label, nbf):
+	def compte(self, label, nbfichiers):
 		""" compte le nombre de fichiers de la partition courante """
 		# la partition est censée avoir été montée en lecture seule
 		if self.mounted:	# on vérifie quand même
+			self.nbf = 0
 			p = subprocess.Popen(['rsync', '-naxHAXP', self.mounted, '/tmp/rien'], stdout=subprocess.PIPE)
 			#p = subprocess.Popen(['rsync','-naxHAXP','/home','/tmp/ttttaaaa'], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
-				nbf += 1
+				self.nbf += 1
 				c += 1
 				if c==123:
-					update_label(label, nbf)
+					update_label(label, nbfichiers+self.nbf)
 					c = 0
-			update_label(label, nbf)
+			update_label(label, self.nbf+nbfichiers)
+			p.wait()
 			errcode = p.returncode
-		return nbf
+		return self.nbf+nbfichiers
 
 	def __del__(self):
 		self.umount()
@@ -225,17 +237,18 @@ class Disque:
 		for p in self.liste_part:
 			p.format(self.device)
 
-	def copy(self,disk, progressbar):
+	def copy(self, disk, progressbar):
 		""" on fait la copie depuis disk vers le disque courant """
 		print('copie')
 		nombre_fichiers = 0
-		progressbar.setRange(0,self.nbf)
-		# on s'assure que disk est monté
-		disk.mount()
+		progressbar.setRange(0, disk.nbf)
+
 		# copie du mbr
 		self.copy_mbr(disk)
 		# conversion des partitions pour le disque courant, formattage des partitions
 		self.set_partitions()
+		# on s'assure que disk est monté
+		disk.mount()
 		# copie des partitions (sauf le swap)
 		for index in range(len(disk.liste_part)):
 			nombre_fichiers = self.liste_part[index].copy(self.device, disk.liste_part[index], progressbar, nombre_fichiers)
@@ -243,7 +256,6 @@ class Disque:
 	def compte(self,label):
 		""" compte le nombre de fichiers à copier dans le disque original """
 		# on s'assure que disk est monté
-		print('comptage')
 		self.mount()
 		self.nbf = 0 	# compteur de fichiers
 		for index in range(len(self.liste_part)):
@@ -260,8 +272,8 @@ class Disque:
 		for part in self.liste_part:
 			part.umount()
 
-	def __del__(self):
-		self.umount()
+	#def __del__(self):
+	#	self.umount()
 
 	def __repr__(self):
 		s=''
@@ -309,9 +321,12 @@ class Fen(QWidget):
 	def compte(self):
 		self.disk_entree.compte(self.label)
 
+
 	def start(self):
-		self.disk_sortie = Disque(sorties[0],self.disk_entree)
-		self.disk_sortie.copy(self.disk_entree,self.progressbar)
+		self.disk_sortie = Disque(sorties[0], self.disk_entree)
+		print self.disk_entree
+		print self.disk_sortie
+		#self.disk_sortie.copy(self.disk_entree, self.prog_bar)
 
 
 def main(args):
