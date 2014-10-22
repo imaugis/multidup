@@ -238,37 +238,36 @@ class Disque:
 		for p in self.liste_part:
 			p.format(self.device)
 
-	def copy(self, disk, progressbar):
+	def copy(self, disk):
 		""" on fait la copie depuis disk vers le disque courant """
 		print('copie')
 		nombre_fichiers = 0
-		progressbar.setRange(0, disk.nbf)
+		self.prog_bar.setRange(0, disk.nbf)
 
 		# copie du mbr
 		self.copy_mbr(disk)
 		# conversion des partitions pour le disque courant, formattage des partitions
 		self.set_partitions()
-		# on s'assure que disk est monté
-		disk.mount()
-
+		# on s'assure que disque courant est monté
+		self.mount()
 		# copie des partitions (sauf le swap)
 		for index in range(len(disk.liste_part)):
 			self.liste_part[index].copy(self.device, disk.liste_part[index])
 		# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
 		self.mount()
 		# copie des partitions (sauf le swap)
-		for index in range(len(disk.liste_part)):
+		for dest,org in zip( self.liste_part, disk.list_part):
 			#print 'copie depuis %s' % disk.device
-			nombre_fichiers = self.liste_part[index].copy(disk.device, disk.liste_part[index], progressbar, nombre_fichiers)
+			nombre_fichiers = dest.copy(disk.device, org, progressbar, nombre_fichiers)
 
-	def compte(self, label):
+	def compte(self):
 		""" compte le nombre de fichiers à copier dans le disque original """
 		# on s'assure que disk est monté
 		self.mount()
 		nombre_fichiers = 0
 		# comptage des partitions (sauf le swap)
-		for index in range(len(self.liste_part)):
-			nombre_fichiers = self.liste_part[index].compte(label, nombre_fichiers)
+		for part in self.liste_part:
+			nombre_fichiers = part.compte(self.label, nombre_fichiers)
 		self.nbf = nombre_fichiers
 
 	def mount(self):
@@ -295,8 +294,8 @@ class Disque:
 				"  cylindres: {}\n".format(self.nbre_cylindres) +
 				s)
 
-def update_label(label, n):
-	label.setText(str(n))
+def update_label(n):
+	self.label.setText(str(n))
 	QApplication.processEvents()
 
 def update_bar(bar, n):
@@ -325,19 +324,19 @@ class Fen(QWidget):
 		self.setLayout(self.box)
 
 		self.disk_entree = Disque(entree, option='ro')
+		self.disk_entree.prog_bar = self.prog_bar
+		self.disk_entree.label = self.label
 		
 		#self.disk_sortie = Disque(sorties[0],self.disk_entree)
 
 	def compte(self):
 		self.disk_entree.compte(self.label)
 
-
 	def start(self):
 		self.disk_sortie = Disque(sorties[0], self.disk_entree)
-		print self.disk_entree
-		print self.disk_sortie
-		#self.disk_sortie.copy(self.disk_entree, self.prog_bar)
-
+		#print self.disk_entree
+		#print self.disk_sortie
+		self.disk_sortie.copy(self.disk_entree)
 
 def main(args):
 	#chaque programme doit disposer d'une instance de QApplication gérant l'ensemble des widgets
