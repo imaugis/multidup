@@ -113,12 +113,13 @@ class Partition:
 	def copy(self,device,part, progressbar, nbfichiers):
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
+		print self
 		self.mount(device)
 		if self.mounted:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
 			# copie
-			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
+			#p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
 				nbfichiers += 1
@@ -249,18 +250,26 @@ class Disque:
 		self.set_partitions()
 		# on s'assure que disk est monté
 		disk.mount()
+
 		# copie des partitions (sauf le swap)
 		for index in range(len(disk.liste_part)):
-			nombre_fichiers = self.liste_part[index].copy(self.device, disk.liste_part[index], progressbar, nombre_fichiers)
+			self.liste_part[index].copy(self.device, disk.liste_part[index])
+		# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
+		self.mount()
+		# copie des partitions (sauf le swap)
+		for index in range(len(disk.liste_part)):
+			#print 'copie depuis %s' % disk.device
+			nombre_fichiers = self.liste_part[index].copy(disk.device, disk.liste_part[index], progressbar, nombre_fichiers)
 
-	def compte(self,label):
+	def compte(self, label):
 		""" compte le nombre de fichiers à copier dans le disque original """
 		# on s'assure que disk est monté
 		self.mount()
-		self.nbf = 0 	# compteur de fichiers
+		nombre_fichiers = 0
+		# comptage des partitions (sauf le swap)
 		for index in range(len(self.liste_part)):
-			self.nbf = self.liste_part[index].compte(label,self.nbf)
-		return self.nbf
+			nombre_fichiers = self.liste_part[index].compte(label, nombre_fichiers)
+		self.nbf = nombre_fichiers
 
 	def mount(self):
 		""" monte les partitions du disque """
@@ -316,6 +325,7 @@ class Fen(QWidget):
 		self.setLayout(self.box)
 
 		self.disk_entree = Disque(entree, option='ro')
+		
 		#self.disk_sortie = Disque(sorties[0],self.disk_entree)
 
 	def compte(self):
