@@ -9,11 +9,11 @@ le programme sert à dupliquer un original depuis un disque SSD qui comporte 3 p
 les partitions 1 & 2 sont fixes
 la partition 3 sera variable selon la taille du disque de destination
 
-on impose à la destination d'avoir le même UUID que l'original pour faciliter les configurations
+on impose à la destination d'avoir les même UUID que l'original pour faciliter les configurations
 """
 
 import sys,os,re,commands
-from copy import deepcopy
+#from copy import deepcopy
 import subprocess
 import tempfile
 from PyQt4.QtGui import *
@@ -32,30 +32,48 @@ def ls():
 
 class Partition:
 	"""descriptif de chaque partition"""
-	def __init__(self,part):
-		""" part: /dev/sdXN  ex: /dev/sdb1"""
-		self.npart = 0
-		self.start = 0
-		self.size = 0
-		self.Id = 0
-		self.bootable  = ''
-		self.filesytem = ''
-		self.uuid = ''
-		self.nbf = 0 			# nombre de fichiers de la partition
+	def __init__(self, part, label=None, progressbar=None):
+		if not isinstance(part,Partition):
+			""" part: /dev/sdXN  ex: /dev/sdb1"""
+			self.npart = 0
+			self.start = 0
+			self.size = 0
+			self.Id = 0
+			self.bootable  = ''
+			self.filesytem = ''
+			self.uuid = ''
+			self.nbf = 0 			# nombre de fichiers de la partition
+			self.label = label
+			self.prog_bar = progressbar
 
-		self.mounted = ''		# représente le répertoire monté de cette partition
+			self.mounted = ''		# représente le répertoire monté de cette partition
 
-		parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
-		self.npart,self.start,self.size,self.Id,self.bootable=parts.groups()
-		self.npart=int(self.npart)
-		self.start=int(self.start)
-		self.size =int(self.size)
+			parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
+			self.npart,self.start,self.size,self.Id,self.bootable=parts.groups()
+			self.npart=int(self.npart)
+			self.start=int(self.start)
+			self.size =int(self.size)
 
-		blkid = commands.getoutput("blkid %s" % part)	# on lit l'UUID et le système de fichier
-		if blkid:
-			rex=re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
-			resultat=rex.search(blkid)
-			self.uuid,self.filesytem=resultat.groups()
+			blkid = commands.getoutput("blkid %s" % part)	# on lit l'UUID et le système de fichier
+			if blkid:
+				rex=re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
+				resultat=rex.search(blkid)
+				self.uuid,self.filesytem=resultat.groups()
+		else:
+			""" ici part est une partition dont on doit faire une copie """
+			self.npart = part.npart
+			self.start = part.start
+			self.size  = part.size
+			self.Id    = part.Id
+			self.bootable  = part.bootable
+			self.filesytem = part.filesytem
+			self.uuid  = part.uuid
+			self.nbf   = part.nbf 			# nombre de fichiers de la partition
+			self.label = label
+			self.prog_bar = progressbar
+
+			self.mounted = ''		# représente le répertoire monté de cette partition
+
 
 	def taille(self):
 		return self.size		# retourne la taille de la partition
@@ -102,18 +120,17 @@ class Partition:
 		if self.mounted != '':
 			if debug:
 				print('demonte la partition {}'.format(self.debug_part))
-
 			p = subprocess.Popen(['sync'])
 			p.wait()
 			p = subprocess.Popen(['umount', self.mounted])
 			p.wait()
 			os.rmdir(self.mounted)
 			self.mounted = ''
+			print '-------------------------------------------- démonté -----------------------------------------------------'
 
 	def copy(self,device,part, progressbar, nbfichiers):
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
-		print self
 		self.mount(device)
 		if self.mounted:
 			if debug:
@@ -162,6 +179,7 @@ class Partition:
 
 class Disque:
 	def lit_disque(self,disk):
+		print disk
 		if disk != '':
 			s=commands.getoutput("fdisk -l %s" % disk)
 			for l in s.split('\n'):
@@ -176,7 +194,7 @@ class Disque:
 					self.taille_cylindre=self.nbre_sect_piste * self.nbre_tetes
 					break
 
-	def __init__(self,disk,origin=None, option=''):
+	def __init__(self,disk,origin=None, option='', label=None, progressbar=None):
 		self.device = disk 			# /dev/sdX
 		self.nbre_secteurs = 0		# nbre de secteurs du disque
 		self.nbre_cylindres = 0		# nbre de cylindres
@@ -187,17 +205,20 @@ class Disque:
 		self.liste_part = []
 		self.mount_option = option
 		self.nbf = 0 				# nbre de fichiers à copier (pour la progress bar)
+		self.label = label
+		self.prog_bar = progressbar
 
 		self.lit_disque(disk)
 		if origin == None:
 			sfdisk_output = commands.getoutput("sfdisk -d %s" % disk)	# on lit la table de partition du disque
 			for line in sfdisk_output.split("\n"):			# on explore ligne par ligne
 				if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
-					p = Partition(line)
+					p = Partition(line,self.label,self.prog_bar)
 					if p.taille() != 0:						# si la partition n'est pas vide
 						self.liste_part.append(p)
 		else :
-			self.liste_part = deepcopy(origin.liste_part)		# recopie de la liste de partition du disque d'origine
+			self.liste_part = [ Partition(part, self.label, self.prog_bar) for part in origin.liste_part ]
+			#self.liste_part = deepcopy(origin.liste_part)		# recopie de la liste de partition du disque d'origine
 			self.liste_part[-1].size = 0						# on annule la taille de la dernière partition, ce qui permettra d'étendre cette partition autant que nécessaire
 
 	def sfdisk_conv(self):
@@ -227,7 +248,7 @@ class Disque:
 		p.wait()
 
 	def set_partitions(self):
-		print('crée une nouvelle table de partitions sur {}'.format(self.device))
+		#print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
 		command = ["sfdisk", self.device ]
 		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -240,7 +261,7 @@ class Disque:
 
 	def copy(self, disk):
 		""" on fait la copie depuis disk vers le disque courant """
-		print('copie')
+		#print('copie')
 		nombre_fichiers = 0
 		self.prog_bar.setRange(0, disk.nbf)
 
@@ -294,8 +315,8 @@ class Disque:
 				"  cylindres: {}\n".format(self.nbre_cylindres) +
 				s)
 
-def update_label(n):
-	self.label.setText(str(n))
+def update_label(label,n):
+	label.setText(str(n))
 	QApplication.processEvents()
 
 def update_bar(bar, n):
@@ -330,7 +351,7 @@ class Fen(QWidget):
 		#self.disk_sortie = Disque(sorties[0],self.disk_entree)
 
 	def compte(self):
-		self.disk_entree.compte(self.label)
+		self.disk_entree.compte()
 
 	def start(self):
 		self.disk_sortie = Disque(sorties[0], self.disk_entree)
