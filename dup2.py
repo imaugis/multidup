@@ -126,9 +126,8 @@ class Partition:
 			p.wait()
 			os.rmdir(self.mounted)
 			self.mounted = ''
-			print '-------------------------------------------- démonté -----------------------------------------------------'
 
-	def copy(self,device,part, progressbar, nbfichiers):
+	def copy(self,device,part, nbfichiers):
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
 		self.mount(device)
@@ -136,19 +135,20 @@ class Partition:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
 			# copie
-			#p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
+			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
+				print line
 				nbfichiers += 1
 				c += 1
 				if c==100:
-					update_bar(progressbar, nbfichiers)
+					update_bar(self.prog_bar, nbfichiers)
 					c = 0
-			update_bar(progressbar, nbfichiers)
+			update_bar(self.prog_bar, nbfichiers)
 			#errcode = p.returncode
 			p.wait()
 			# on démonte la partition
-			self.umount()
+			#self.umount()		c'est mieux de le laisser faire par le destructeur
 		return nbfichiers
 
 	def compte(self, label, nbfichiers):
@@ -269,17 +269,12 @@ class Disque:
 		self.copy_mbr(disk)
 		# conversion des partitions pour le disque courant, formattage des partitions
 		self.set_partitions()
-		# on s'assure que disque courant est monté
-		self.mount()
-		# copie des partitions (sauf le swap)
-		for index in range(len(disk.liste_part)):
-			self.liste_part[index].copy(self.device, disk.liste_part[index])
 		# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
 		self.mount()
 		# copie des partitions (sauf le swap)
-		for dest,org in zip( self.liste_part, disk.list_part):
+		for dest,org in zip( self.liste_part, disk.liste_part):
 			#print 'copie depuis %s' % disk.device
-			nombre_fichiers = dest.copy(disk.device, org, progressbar, nombre_fichiers)
+			nombre_fichiers = dest.copy(disk.device, org, nombre_fichiers)
 
 	def compte(self):
 		""" compte le nombre de fichiers à copier dans le disque original """
@@ -344,17 +339,13 @@ class Fen(QWidget):
 		self.box.addWidget(self.bsortie)
 		self.setLayout(self.box)
 
-		self.disk_entree = Disque(entree, option='ro')
-		self.disk_entree.prog_bar = self.prog_bar
-		self.disk_entree.label = self.label
-		
-		#self.disk_sortie = Disque(sorties[0],self.disk_entree)
+		self.disk_entree = Disque(entree, option='ro', label=self.label)
 
 	def compte(self):
 		self.disk_entree.compte()
 
 	def start(self):
-		self.disk_sortie = Disque(sorties[0], self.disk_entree)
+		self.disk_sortie = Disque(sorties[0], self.disk_entree, progressbar = self.prog_bar)
 		#print self.disk_entree
 		#print self.disk_sortie
 		self.disk_sortie.copy(self.disk_entree)
