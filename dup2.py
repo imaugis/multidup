@@ -346,8 +346,6 @@ class Fen(QWidget):
 
 	def start(self):
 		self.disk_sortie = Disque(sorties[0], self.disk_entree, progressbar = self.prog_bar)
-		#print self.disk_entree
-		#print self.disk_sortie
 		self.disk_sortie.copy(self.disk_entree)
 
 def main(args):
@@ -357,10 +355,6 @@ def main(args):
 	fenetre = Fen()
 	fenetre.show()
 	app.exec_()
-
-	#i=Disque(entree, option='ro')
-	#o=Disque(sorties[0],i)
-	#o.copy(i)
 
 if __name__ == '__main__':
 	main(sys.argv)
