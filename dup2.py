@@ -327,37 +327,63 @@ def liste_disques():
 				liste.append(dev)
 	return liste
 
+class Sortie(QHBoxLayout):
+	def __init__(self, disk):
+		QHBoxLayout.__init__(self)
+		self.check = QCheckBox(disk)
+		self.label = QLabel('---')
+		self.prog_bar = QProgressBar()
+		self.addWidget(self.check)
+		self.addWidget(self.label)
+		self.addWidget(self.prog_bar)
 
 class Fen(QWidget):
 	def __init__(self,parent=None):
 		super(Fen,self).__init__(parent)
-		self.box = QFormLayout(self)
+		self.box = QVBoxLayout(self)
 
-		self.bouton = QPushButton(QString.fromUtf8("lire qté de fichiers"))
-		self.bouton.setEnabled(False)
+		self.setWindowTitle('Duplication Multiple')
+		self.setMinimumWidth(400)
+
+		self.bouton = QPushButton()
 		self.bouton.clicked.connect(self.compte)
+
 		self.label = QLabel('nombre de fichiers')
 		self.label_org = QLabel('Disque original')
 		self.combo_org = QComboBox()
-		self.box.addRow(self.label_org, self.combo_org)
-		self.box.addRow(self.bouton, self.label)
+
+		self.hbox1 = QHBoxLayout()
+		self.hbox1.addWidget(self.label_org)
+		self.hbox1.addWidget(self.combo_org)
+		self.hbox2 = QHBoxLayout()
+		self.hbox2.addWidget(self.bouton)
+		self.hbox2.addWidget(self.label)
+		self.box.addLayout(self.hbox1)
+		self.box.addLayout(self.hbox2)
 
 		self.bsortie = QPushButton("Quitte")
 		self.bstart = QPushButton("Start !")
 		self.bsortie.clicked.connect(self.close)
 		self.bstart.clicked.connect(self.start)
-		self.prog_bar = QProgressBar()
-		self.box.addRow(self.bstart, self.prog_bar)
+		self.box.addWidget(self.bstart)
 
-		self.box.addWidget(self.bsortie)
+		self.liste_dev = liste_disques()
+		self.bouton.setText('Comptage de %s' % self.liste_dev[0])
+
+		self.liste_gui = []
+		for dev in self.liste_dev:
+			l=Sortie(dev)
+			self.box.addLayout(l)
+			self.liste_gui.append(l)
+
+		self.hbox3 = QHBoxLayout()
+		self.hbox3.addStretch(1)
+		self.hbox3.addWidget(self.bsortie)
+		self.box.addLayout(self.hbox3)
 		self.setLayout(self.box)
 
-		self.liste_org = liste_disques()
-		self.combo_org.addItems(self.liste_org)
+		self.combo_org.addItems(self.liste_dev)
 		self.combo_org.currentIndexChanged[str].connect(self.change_org)
-
-
-		#self.disk_entree = Disque(entree, option='ro', label=self.label)
 
 	def compte(self):
 		self.disk_entree = Disque(entree, option='ro', label=self.label)
@@ -370,9 +396,7 @@ class Fen(QWidget):
 	def change_org(self,val):
 		global entree
 		entree = str(val)
-		print val
 		self.bouton.setText('Comptage de %s' % entree)
-		self.bouton.setEnabled(True)
 
 def main(args):
 	#chaque programme doit disposer d'une instance de QApplication gérant l'ensemble des widgets
