@@ -218,7 +218,6 @@ class Disque:
 						self.liste_part.append(p)
 		else :
 			self.liste_part = [ Partition(part, self.label, self.prog_bar) for part in origin.liste_part ]
-			#self.liste_part = deepcopy(origin.liste_part)		# recopie de la liste de partition du disque d'origine
 			self.liste_part[-1].size = 0						# on annule la taille de la dernière partition, ce qui permettra d'étendre cette partition autant que nécessaire
 
 	def sfdisk_conv(self):
@@ -318,15 +317,29 @@ def update_bar(bar, n):
 	bar.setValue(n)
 	QApplication.processEvents()
 
+def liste_disques():
+	liste = []
+	sfdisk_output = commands.getoutput("sfdisk -s")	# on lit la liste des disques du système
+	for line in sfdisk_output.split("\n"):			# on explore ligne par ligne
+		if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
+			dev = line.split(':')[0]				# on sépare le /dev/sd?
+			if dev != '/dev/sda':
+				liste.append(dev)
+	return liste
+
+
 class Fen(QWidget):
 	def __init__(self,parent=None):
 		super(Fen,self).__init__(parent)
 		self.box = QFormLayout(self)
 
-		self.bouton = QPushButton(QString.fromUtf8("lire qté de fichiers de /home"))
+		self.bouton = QPushButton(QString.fromUtf8("lire qté de fichiers"))
+		self.bouton.setEnabled(False)
 		self.bouton.clicked.connect(self.compte)
 		self.label = QLabel('nombre de fichiers')
-		#self.quoi = QLabel('action en cours')
+		self.label_org = QLabel('Disque original')
+		self.combo_org = QComboBox()
+		self.box.addRow(self.label_org, self.combo_org)
 		self.box.addRow(self.bouton, self.label)
 
 		self.bsortie = QPushButton("Quitte")
@@ -339,18 +352,32 @@ class Fen(QWidget):
 		self.box.addWidget(self.bsortie)
 		self.setLayout(self.box)
 
-		self.disk_entree = Disque(entree, option='ro', label=self.label)
+		self.liste_org = liste_disques()
+		self.combo_org.addItems(self.liste_org)
+		self.combo_org.currentIndexChanged[str].connect(self.change_org)
+
+
+		#self.disk_entree = Disque(entree, option='ro', label=self.label)
 
 	def compte(self):
+		self.disk_entree = Disque(entree, option='ro', label=self.label)
 		self.disk_entree.compte()
 
 	def start(self):
 		self.disk_sortie = Disque(sorties[0], self.disk_entree, progressbar = self.prog_bar)
 		self.disk_sortie.copy(self.disk_entree)
 
+	def change_org(self,val):
+		global entree
+		entree = str(val)
+		print val
+		self.bouton.setText('Comptage de %s' % entree)
+		self.bouton.setEnabled(True)
+
 def main(args):
 	#chaque programme doit disposer d'une instance de QApplication gérant l'ensemble des widgets
 	app=QApplication(args)
+	app.setStyle("plastique")
 	#un nouveau bouton
 	fenetre = Fen()
 	fenetre.show()
