@@ -165,7 +165,7 @@ class Partition:
 				if c==123:
 					update_label(label, nbfichiers+self.nbf)
 					c = 0
-			update_label(label, self.nbf+nbfichiers)
+			update_label(label, '%s fichiers' % (self.nbf+nbfichiers))
 			p.wait()
 			errcode = p.returncode
 		return self.nbf+nbfichiers
@@ -194,7 +194,7 @@ class Disque:
 					self.taille_cylindre=self.nbre_sect_piste * self.nbre_tetes
 					break
 
-	def __init__(self,disk,origin=None, option='', label=None, progressbar=None):
+	def __init__(self,disk, sortie_gui, origin=None, option=''):
 		self.device = disk 			# /dev/sdX
 		self.nbre_secteurs = 0		# nbre de secteurs du disque
 		self.nbre_cylindres = 0		# nbre de cylindres
@@ -205,8 +205,8 @@ class Disque:
 		self.liste_part = []
 		self.mount_option = option
 		self.nbf = 0 				# nbre de fichiers à copier (pour la progress bar)
-		self.label = label
-		self.prog_bar = progressbar
+		self.label = sortie_gui.label
+		self.prog_bar = sortie_gui.prog_bar
 
 		self.lit_disque(disk)
 		if origin == None:
@@ -327,28 +327,39 @@ def liste_disques():
 				liste.append(dev)
 	return liste
 
-class Sortie(QHBoxLayout):
+class Sortie(QGridLayout):
 	def __init__(self, disk):
-		QHBoxLayout.__init__(self)
+		QGridLayout.__init__(self)
+		self.device = disk
+		self.enabled = True
+
 		self.check = QCheckBox(disk)
 		self.label = QLabel('---')
 		self.prog_bar = QProgressBar()
-		self.addWidget(self.check)
-		self.addWidget(self.label)
-		self.addWidget(self.prog_bar)
+		self.addWidget(self.check, 0, 0)
+		self.addWidget(self.label, 0, 1, 1, 3)
+		self.addWidget(self.prog_bar, 0, 4, 1, 2)
+
+	def enable(self, val):
+		self.check.setEnabled(val)
+		self.label.setEnabled(val)
+		self.prog_bar.setEnabled(val)
+		self.enabled = val
 
 class Fen(QWidget):
 	def __init__(self,parent=None):
 		super(Fen,self).__init__(parent)
+		self.indexIn = 0 				# index du disque original dans la liste_dev
+
 		self.box = QVBoxLayout(self)
 
 		self.setWindowTitle('Duplication Multiple')
 		self.setMinimumWidth(400)
 
-		self.bouton = QPushButton()
+		self.bouton = QPushButton('Comptage')
 		self.bouton.clicked.connect(self.compte)
 
-		self.label = QLabel('nombre de fichiers')
+		self.label = QLabel('Nombre de fichiers')
 		self.label_org = QLabel('Disque original')
 		self.combo_org = QComboBox()
 
@@ -362,14 +373,12 @@ class Fen(QWidget):
 		self.box.addLayout(self.hbox2)
 
 		self.bsortie = QPushButton("Quitte")
-		self.bstart = QPushButton("Start !")
+		self.bstart = QPushButton(QString.fromUtf8("Démarrer les copies"))
 		self.bsortie.clicked.connect(self.close)
 		self.bstart.clicked.connect(self.start)
 		self.box.addWidget(self.bstart)
 
 		self.liste_dev = liste_disques()
-		self.bouton.setText('Comptage de %s' % self.liste_dev[0])
-
 		self.liste_gui = []
 		for dev in self.liste_dev:
 			l=Sortie(dev)
@@ -384,19 +393,29 @@ class Fen(QWidget):
 
 		self.combo_org.addItems(self.liste_dev)
 		self.combo_org.currentIndexChanged[str].connect(self.change_org)
+		self.change_org(self.liste_dev[0])
 
 	def compte(self):
-		self.disk_entree = Disque(entree, option='ro', label=self.label)
+		self.disk_entree = Disque(self.liste_dev[self.indexIn], self.liste_gui[self.indexIn], option='ro')
 		self.disk_entree.compte()
 
 	def start(self):
-		self.disk_sortie = Disque(sorties[0], self.disk_entree, progressbar = self.prog_bar)
-		self.disk_sortie.copy(self.disk_entree)
+		disks_out = []
+		for s in self.liste_gui:
+			if s.enabled:
+				if s.check.isChecked():
+					disks_out.append(s.device)
+		#self.disk_sortie = Disque(sorties[0], self.disk_entree, sortie_gui)
+		#self.disk_sortie.copy(self.disk_entree)
+		print(disks_out)
 
 	def change_org(self,val):
 		global entree
+		for s in self.liste_gui:
+			s.enable(True)
+		self.indexIn = self.combo_org.currentIndex()
+		self.liste_gui[self.indexIn].enable(False)
 		entree = str(val)
-		self.bouton.setText('Comptage de %s' % entree)
 
 def main(args):
 	#chaque programme doit disposer d'une instance de QApplication gérant l'ensemble des widgets
