@@ -87,6 +87,7 @@ class Partition:
 	def format(self,device):
 		""" formatte la partition en mettant l'UUID d'origine """
 		#print('formatte partition {}{}'.format(device, self.npart))
+		update_label(self.label, 'formattage %s%s' % (device, self.npart))
 		if self.Id == '82':
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
@@ -103,6 +104,7 @@ class Partition:
 	def mount(self,device,option=''):
 		# on monte la partition
 		if self.mounted == '':
+			update_label(self.label, 'montage de %s%s' % (device, self.npart))
 			if self.Id == '83':
 				self.mounted = tempfile.mkdtemp()
 				#print 'on vient de créer',self.mounted
