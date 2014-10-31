@@ -11,8 +11,8 @@ la partition 3 sera variable selon la taille du disque de destination
 
 on impose à la destination d'avoir les même UUID que l'original pour faciliter les configurations
 """
-
-import sys,os,re,commands
+from threading import Thread
+import sys,os,re
 #from copy import deepcopy
 import subprocess
 import tempfile
@@ -26,39 +26,41 @@ sorties=["/dev/sdc"]
 partition=entree
 disques_sortie=[]
 
-def ls():
-	p = subprocess.Popen(['ls','/tmp'])
-	p.wait()
-
 class Partition:
 	"""descriptif de chaque partition"""
 	def __init__(self, part, label=None, progressbar=None):
 		if not isinstance(part,Partition):
 			""" part: /dev/sdXN  ex: /dev/sdb1"""
-			self.npart = 0
-			self.start = 0
-			self.size = 0
-			self.Id = 0
+			self.npart	= 0
+			self.start 	= 0
+			self.size 	= 0
+			self.Id 	= 0
 			self.bootable  = ''
 			self.filesytem = ''
-			self.uuid = ''
-			self.nbf = 0 			# nombre de fichiers de la partition
-			self.label = label
+			self.uuid 	= ''
+			self.nbf 	= 0 			# nombre de fichiers de la partition
+			self.label 	= label
 			self.prog_bar = progressbar
 
 			self.mounted = ''		# représente le répertoire monté de cette partition
 
 			parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
-			self.npart,self.start,self.size,self.Id,self.bootable=parts.groups()
-			self.npart=int(self.npart)
-			self.start=int(self.start)
-			self.size =int(self.size)
-
-			blkid = commands.getoutput("blkid %s" % part)	# on lit l'UUID et le système de fichier
+			self.npart, self.start, self.size, self.Id, self.bootable = parts.groups()
+			self.npart= int(self.npart)
+			self.part = part					# ex /dev/sdb1
+			self.start= int(self.start)
+			self.size = int(self.size)
+			update_label(self.label, 'lecture UUID')
+			
+			p = subprocess.Popen(["blkid",str(part)], stdout=subprocess.PIPE)
+			out1= p.communicate()
+			#Popen('blkid',stdout=sp.PIPE).communicate()
+			p.wait()
+			blkid = out1[0].decode('utf-8').split('\n')[0]
 			if blkid:
-				rex=re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
-				resultat=rex.search(blkid)
-				self.uuid,self.filesytem=resultat.groups()
+				rex = re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
+				resultat = rex.search(blkid)
+				self.uuid, self.filesytem = resultat.groups()
 		else:
 			""" ici part est une partition dont on doit faire une copie """
 			self.npart = part.npart
@@ -87,41 +89,39 @@ class Partition:
 	def format(self,device):
 		""" formatte la partition en mettant l'UUID d'origine """
 		#print('formatte partition {}{}'.format(device, self.npart))
-		update_label(self.label, 'formattage %s%s' % (device, self.npart))
 		if self.Id == '82':
+			update_label(self.label, 'creation swap sur %s%s' % (device, self.npart))
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
 			p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
 			p.wait()
-			#print (['mkswap','-U',self.uuid,device+str(self.npart)])
 		elif self.Id == '83':
+			update_label(self.label, 'formattage %s%s' % (device, self.npart))
 			if debug:
 				print ('crée la partition en {} sur {}{}'.format(self.filesytem, device, self.npart))
 			p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
 			p.wait()
-			#print (['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
 
 	def mount(self,device,option=''):
 		# on monte la partition
 		if self.mounted == '':
-			update_label(self.label, 'montage de %s%s' % (device, self.npart))
 			if self.Id == '83':
+				self.part = device + str(self.npart)
+				update_label(self.label, 'montage de ' + self.part)
 				self.mounted = tempfile.mkdtemp()
-				#print 'on vient de créer',self.mounted
 				if debug:
-					self.debug_part = device + str(self.npart)
-					print('monte la partition {} dans {}'.format(self.debug_part, self.mounted))
+					print('monte la partition {} dans {}'.format(self.part, self.mounted))
 				if option:
 					p = subprocess.Popen(['mount', '-o', option, device+str(self.npart), self.mounted])
 				else:
 					p = subprocess.Popen(['mount', device+str(self.npart), self.mounted])
 				p.wait()
-				#print (['mount',device+str(self.npart), self.mounted])
 
 	def umount(self):
 		if self.mounted != '':
+			#update_label(self.label, 'demontage de '+ self.part)
 			if debug:
-				print('demonte la partition {}'.format(self.debug_part))
+				print('demonte la partition {}'.format(self.part))
 			p = subprocess.Popen(['sync'])
 			p.wait()
 			p = subprocess.Popen(['umount', self.mounted])
@@ -133,6 +133,7 @@ class Partition:
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
 		self.mount(device)
+		update_label(self.label, 'copie depuis %s%s' % (device, self.npart))
 		if self.mounted:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
@@ -140,17 +141,15 @@ class Partition:
 			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
-				print line
-				nbfichiers += 1
-				c += 1
-				if c==100:
-					update_bar(self.prog_bar, nbfichiers)
-					c = 0
-			update_bar(self.prog_bar, nbfichiers)
-			#errcode = p.returncode
+				if not line.startswith(' '):
+					print(line)
+					nbfichiers += 1
+					c += 1
+					if c==100:
+						update_bar(self.prog_bar, nbfichiers)
+						c = 0
+			#update_bar(self.prog_bar, nbfichiers)
 			p.wait()
-			# on démonte la partition
-			#self.umount()		c'est mieux de le laisser faire par le destructeur
 		return nbfichiers
 
 	def compte(self, label, nbfichiers):
@@ -159,7 +158,6 @@ class Partition:
 		if self.mounted:	# on vérifie quand même
 			self.nbf = 0
 			p = subprocess.Popen(['rsync', '-naxHAXP', self.mounted, '/tmp/rien'], stdout=subprocess.PIPE)
-			#p = subprocess.Popen(['rsync','-naxHAXP','/home','/tmp/ttttaaaa'], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
 				self.nbf += 1
@@ -183,8 +181,8 @@ class Disque:
 	def lit_disque(self,disk):
 		print disk
 		if disk != '':
-			s=commands.getoutput("fdisk -l %s" % disk)
-			for l in s.split('\n'):
+			#s=commands.getoutput("fdisk -l %s" % disk)
+			for l in subprocess.check_output(['fdisk','-l',disk]).decode('utf-8').split('\n'):
 				if l[:1].isdigit():
 					rex=re.compile(r"^(\d+)\D+(\d+)\D+(\d+)\D+(\d+)")
 					resultat=rex.search(l)
@@ -212,11 +210,12 @@ class Disque:
 
 		self.lit_disque(disk)
 		if origin == None:
-			sfdisk_output = commands.getoutput("sfdisk -d %s" % disk)	# on lit la table de partition du disque
-			for line in sfdisk_output.split("\n"):			# on explore ligne par ligne
-				if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
+			update_label(self.label, 'lecture tbl part de ' + self.device)
+			sfdisk_output = subprocess.check_output(["sfdisk","-d",disk])	# on lit la table de partition du disque
+			for line in sfdisk_output.decode('utf-8').split("\n"):			# on explore ligne par ligne
+				if line.startswith("/"):							# si la ligne commence par un / on doit avoir un /dev/sd???
 					p = Partition(line,self.label,self.prog_bar)
-					if p.taille() != 0:						# si la partition n'est pas vide
+					if p.taille() != 0:								# si la partition n'est pas vide
 						self.liste_part.append(p)
 		else :
 			self.liste_part = [ Partition(part, self.label, self.prog_bar) for part in origin.liste_part ]
@@ -230,7 +229,7 @@ class Disque:
 		for p in self.liste_part:
 			n,s1=p.sfdisk_conv(self.device)
 			part[n]=s1
-		for n in [1,2,3,4]:  # vérifie s'il y a les 4 partitions, sinon en fait des vides
+		for n in [1,2,3,4]:  # vérifie s'il y a bien les 4 partitions, sinon en fait des vides
 			if n in part:
 				s += part[n]
 			else:
@@ -241,18 +240,20 @@ class Disque:
 		""" copie le MBR et le stage1 de grub depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
 		# et aussi tous les secteurs soit-disant libre avant la première partition
+		update_label(self.label, 'copie du MBR et GRUB stage1')
 		nbs=disk.liste_part[0].start
 		if debug:
 			print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
-		s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count="+str(nbs))
-		p = subprocess.Popen(['sync'])
+		subprocess.call(['dd','if='+disk.device,'of='+self.device,'bs=512','count='+str(nbs)])
+		#s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count="+str(nbs))
+		#p = subprocess.Popen(['sync'])
 		p.wait()
 
 	def set_partitions(self):
 		#print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
 		command = ["sfdisk", self.device ]
-		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate(instructions)
 		(output, errors) = pobj.communicate(instructions)
 		pobj.wait()
 		if debug:
@@ -264,18 +265,25 @@ class Disque:
 		""" on fait la copie depuis disk vers le disque courant """
 		#print('copie')
 		nombre_fichiers = 0
-		self.prog_bar.setRange(0, disk.nbf)
-
-		# copie du mbr
-		self.copy_mbr(disk)
-		# conversion des partitions pour le disque courant, formattage des partitions
-		self.set_partitions()
-		# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
-		self.mount()
-		# copie des partitions (sauf le swap)
-		for dest,org in zip( self.liste_part, disk.liste_part):
-			#print 'copie depuis %s' % disk.device
-			nombre_fichiers = dest.copy(disk.device, org, nombre_fichiers)
+		try:
+			# copie du mbr
+			self.copy_mbr(disk)
+			# conversion des partitions pour le disque courant, formattage des partitions
+			self.set_partitions()
+			# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
+			self.mount()
+			# copie des partitions (sauf le swap)
+			while self.nbf == 0:		# attend que le nombre de fichiers soit référencé par compte
+				pass
+			self.prog_bar.setRange(0, disk.nbf)
+			for dest,org in zip( self.liste_part, disk.liste_part):
+				#print 'copie depuis %s' % disk.device
+				nombre_fichiers = dest.copy(disk.device, org, nombre_fichiers)
+			update_label(self.label, 'copie terminée')
+			self.prog_bar.setRange(0, 100)
+			update_bar(self.prog_bar,100)
+		except subprocess.CalledProcessError as erc:
+			update_label(self.label, error=True)
 
 	def compte(self):
 		""" compte le nombre de fichiers à copier dans le disque original """
@@ -311,8 +319,12 @@ class Disque:
 				"  cylindres: {}\n".format(self.nbre_cylindres) +
 				s)
 
-def update_label(label,n):
-	label.setText(str(n))
+def update_label(label,n='', error=False):
+	if n != '':
+		label.setText(str(n))
+	if error:
+		label.setStyleSheet("border-radius: 3px;"
+                            "background-color: red;")
 	QApplication.processEvents()
 
 def update_bar(bar, n):
@@ -321,8 +333,7 @@ def update_bar(bar, n):
 
 def liste_disques():
 	liste = []
-	sfdisk_output = commands.getoutput("sfdisk -s")	# on lit la liste des disques du système
-	for line in sfdisk_output.split("\n"):			# on explore ligne par ligne
+	for line in subprocess.check_output(['sfdisk','-s']).decode('utf-8').split('\n'):			# on explore ligne par ligne la liste des disques du système
 		if line.startswith("/"):					# si la ligne commence par un / on doit avoir un /dev/sd???
 			dev = line.split(':')[0]				# on sépare le /dev/sd?
 			if dev != '/dev/sda':
@@ -402,12 +413,16 @@ class Fen(QWidget):
 		self.disk_entree.compte()
 
 	def start(self):
+		self.compte()
 		disks_out = []
+		disks_copie = []
 		for s in self.liste_gui:
 			if s.enabled:
 				if s.check.isChecked():
 					disks_out.append(s.device)
-		#self.disk_sortie = Disque(sorties[0], self.disk_entree, sortie_gui)
+					disks_copie.append(Thread(target=Disque(s.device, self.disk_entree, sortie_gui).copy, args = (self.disk_entree.device))
+		for thread in disks_copie:
+			thread.start()
 		#self.disk_sortie.copy(self.disk_entree)
 		print(disks_out)
 
