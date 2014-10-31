@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 le programme sert à dupliquer un original depuis un disque SSD qui comporte 3 partitions :
@@ -21,16 +21,17 @@ from PyQt4.QtCore import *
 
 debug = True
 
-entree="/dev/sdb"
-sorties=["/dev/sdc"]
-partition=entree
-disques_sortie=[]
+#entree="/dev/sdb"
+#sorties=["/dev/sdc"]
+#partition=entree
+#disques_sortie=[]
 
 class Partition:
 	"""descriptif de chaque partition"""
 	def __init__(self, part, label=None, progressbar=None):
 		if not isinstance(part,Partition):
 			""" part: /dev/sdXN  ex: /dev/sdb1"""
+			self.device = ''
 			self.npart	= 0
 			self.start 	= 0
 			self.size 	= 0
@@ -43,24 +44,22 @@ class Partition:
 			self.prog_bar = progressbar
 
 			self.mounted = ''		# représente le répertoire monté de cette partition
-
-			parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
-			self.npart, self.start, self.size, self.Id, self.bootable = parts.groups()
+			#parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
+			parts = re.compile(r"^([^0-9]*)([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
+			self.device, self.npart, self.start, self.size, self.Id, self.bootable = parts.groups()
 			self.npart= int(self.npart)
-			self.part = part					# ex /dev/sdb1
 			self.start= int(self.start)
 			self.size = int(self.size)
 			update_label(self.label, 'lecture UUID')
 			
-			p = subprocess.Popen(["blkid",str(part)], stdout=subprocess.PIPE)
-			out1= p.communicate()
-			#Popen('blkid',stdout=sp.PIPE).communicate()
-			p.wait()
-			blkid = out1[0].decode('utf-8').split('\n')[0]
-			if blkid:
-				rex = re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
-				resultat = rex.search(blkid)
-				self.uuid, self.filesytem = resultat.groups()
+			if self.size != 0:
+				p = subprocess.check_output(["blkid",self.device+str(self.npart)])
+				blkid = p.decode('utf-8').split('\n')[0]
+				if blkid:
+					rex = re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
+					resultat = rex.search(blkid)
+					self.uuid, self.filesytem = resultat.groups()
+
 		else:
 			""" ici part est une partition dont on doit faire une copie """
 			self.npart = part.npart
@@ -83,7 +82,7 @@ class Partition:
 	def sfdisk_conv(self,disk):
 		#print self.size, type(self.size)
 		""" convertit en format compatible avec sfdisk en entree pour pouvoir créer les partitions sur le Disque destination """
-		s="/dev/{}{} : start={}, size={}, Id={}{}\n".format(disk, str(self.npart), self.start, self.size if self.size !=0 else '', self.Id, ', bootable' if self.bootable else '')
+		s="{}{} : start={}, size={}, Id={}{}\n".format(disk, str(self.npart), self.start, self.size if self.size !=0 else '', self.Id, ', bootable' if self.bootable else '')
 		return (self.npart,s)
 
 	def format(self,device):
@@ -136,13 +135,13 @@ class Partition:
 		update_label(self.label, 'copie depuis %s%s' % (device, self.npart))
 		if self.mounted:
 			if debug:
-				print('copie depuis la partition {} vers {}'.format(part.debug_part, self.debug_part))
+				print('copie depuis la partition {} vers {}'.format(part.part, self.part))
 			# copie
 			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
-				if not line.startswith(' '):
-					print(line)
+				if not line.decode('utf-8').startswith(" "):
+					#print(line)
 					nbfichiers += 1
 					c += 1
 					if c==100:
@@ -179,7 +178,7 @@ class Partition:
 
 class Disque:
 	def lit_disque(self,disk):
-		print disk
+		print(disk)
 		if disk != '':
 			#s=commands.getoutput("fdisk -l %s" % disk)
 			for l in subprocess.check_output(['fdisk','-l',disk]).decode('utf-8').split('\n'):
@@ -233,7 +232,7 @@ class Disque:
 			if n in part:
 				s += part[n]
 			else:
-				s += '/dev/{}{} : start= 0, size= 0, Id= 0\n'.format(self.device, n)
+				s += '{}{} : start= 0, size= 0, Id= 0\n'.format(self.device, n)
 		return s
 
 	def copy_mbr(self,disk):
@@ -247,14 +246,15 @@ class Disque:
 		subprocess.call(['dd','if='+disk.device,'of='+self.device,'bs=512','count='+str(nbs)])
 		#s=commands.getoutput("dd if="+disk.device+" of="+self.device+" bs=512 count="+str(nbs))
 		#p = subprocess.Popen(['sync'])
-		p.wait()
+		#p.wait()
 
 	def set_partitions(self):
 		#print('crée une nouvelle table de partitions sur {}'.format(self.device))
 		instructions = self.sfdisk_conv()
+		print(instructions)
 		command = ["sfdisk", self.device ]
-		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate(instructions)
-		(output, errors) = pobj.communicate(instructions)
+		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		(output, errors) = pobj.communicate(instructions.encode('utf-8'))
 		pobj.wait()
 		if debug:
 			print('formatte les partitions')
@@ -273,8 +273,8 @@ class Disque:
 			# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
 			self.mount()
 			# copie des partitions (sauf le swap)
-			while self.nbf == 0:		# attend que le nombre de fichiers soit référencé par compte
-				pass
+			#while self.nbf == 0:		# attend que le nombre de fichiers soit référencé par compte
+			#	pass
 			self.prog_bar.setRange(0, disk.nbf)
 			for dest,org in zip( self.liste_part, disk.liste_part):
 				#print 'copie depuis %s' % disk.device
@@ -386,9 +386,12 @@ class Fen(QWidget):
 		self.box.addLayout(self.hbox2)
 
 		self.bsortie = QPushButton("Quitte")
-		self.bstart = QPushButton(QString.fromUtf8("Démarrer les copies"))
-		self.bsortie.clicked.connect(self.close)
-		self.bstart.clicked.connect(self.start)
+		self.bstart = QPushButton("Démarrer les copies")
+		#self.bstart = QPushButton(QString.fromUtf8("Démarrer les copies"))
+		self.connect(self.bsortie,SIGNAL("clicked()"), self.close)
+		self.connect(self.bstart,SIGNAL("clicked()"), self.start)
+		#self.bsortie.clicked.connect(self.close)
+		#self.bstart.clicked.connect(self.start)
 		self.box.addWidget(self.bstart)
 
 		self.liste_dev = liste_disques()
@@ -420,9 +423,9 @@ class Fen(QWidget):
 			if s.enabled:
 				if s.check.isChecked():
 					disks_out.append(s.device)
-					disks_copie.append(Thread(target=Disque(s.device, self.disk_entree, sortie_gui).copy, args = (self.disk_entree.device))
-		for thread in disks_copie:
-			thread.start()
+					disks_copie.append(Thread(target=Disque(s.device, s, origin=self.disk_entree).copy, args = (self.disk_entree,)))
+		for th in disks_copie:
+			th.start()
 		#self.disk_sortie.copy(self.disk_entree)
 		print(disks_out)
 
