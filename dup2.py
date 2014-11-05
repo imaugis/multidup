@@ -50,7 +50,7 @@ class Partition:
 			self.npart= int(self.npart)
 			self.start= int(self.start)
 			self.size = int(self.size)
-			update_label(self.label, 'lecture UUID')
+			update_label(thread, self.label, 'lecture UUID')
 			
 			if self.size != 0:
 				p = subprocess.check_output(["blkid",self.device+str(self.npart)])
@@ -89,13 +89,13 @@ class Partition:
 		""" formatte la partition en mettant l'UUID d'origine """
 		#print('formatte partition {}{}'.format(device, self.npart))
 		if self.Id == '82':
-			update_label(self.label, 'creation swap sur %s%s' % (device, self.npart))
+			update_label(thread, self.label, 'creation swap sur %s%s' % (device, self.npart))
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
 			p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
 			p.wait()
 		elif self.Id == '83':
-			update_label(self.label, 'formattage %s%s' % (device, self.npart))
+			update_label(thread, self.label, 'formattage %s%s' % (device, self.npart))
 			if debug:
 				print ('crée la partition en {} sur {}{}'.format(self.filesytem, device, self.npart))
 			p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
@@ -106,7 +106,7 @@ class Partition:
 		if self.mounted == '':
 			if self.Id == '83':
 				self.part = device + str(self.npart)
-				update_label(self.label, 'montage de ' + self.part)
+				update_label(thread, self.label, 'montage de ' + self.part)
 				self.mounted = tempfile.mkdtemp()
 				if debug:
 					print('monte la partition {} dans {}'.format(self.part, self.mounted))
@@ -118,7 +118,7 @@ class Partition:
 
 	def umount(self):
 		if self.mounted != '':
-			#update_label(self.label, 'demontage de '+ self.part)
+			#update_label(thread, self.label, 'demontage de '+ self.part)
 			if debug:
 				print('demonte la partition {}'.format(self.part))
 			p = subprocess.Popen(['sync'])
@@ -132,7 +132,7 @@ class Partition:
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
 		self.mount(device)
-		update_label(self.label, 'copie depuis %s%s' % (device, self.npart))
+		update_label(thread, self.label, 'copie depuis %s%s' % (device, self.npart))
 		if self.mounted:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.part, self.part))
@@ -162,9 +162,9 @@ class Partition:
 				self.nbf += 1
 				c += 1
 				if c==123:
-					update_label(label, nbfichiers+self.nbf)
+					update_label(thread, label, nbfichiers+self.nbf)
 					c = 0
-			update_label(label, '%s fichiers' % (self.nbf+nbfichiers))
+			update_label(thread, label, '%s fichiers' % (self.nbf+nbfichiers))
 			p.wait()
 			errcode = p.returncode
 		return self.nbf+nbfichiers
@@ -209,7 +209,7 @@ class Disque:
 
 		self.lit_disque(disk)
 		if origin == None:
-			update_label(self.label, 'lecture tbl part de ' + self.device)
+			update_label(thread, self.label, 'lecture tbl part de ' + self.device)
 			sfdisk_output = subprocess.check_output(["sfdisk","-d",disk])	# on lit la table de partition du disque
 			for line in sfdisk_output.decode('utf-8').split("\n"):			# on explore ligne par ligne
 				if line.startswith("/"):							# si la ligne commence par un / on doit avoir un /dev/sd???
@@ -239,7 +239,7 @@ class Disque:
 		""" copie le MBR et le stage1 de grub depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
 		# et aussi tous les secteurs soit-disant libre avant la première partition
-		update_label(self.label, 'copie du MBR et GRUB stage1')
+		update_label(thread, self.label, 'copie du MBR et GRUB stage1')
 		nbs=disk.liste_part[0].start
 		if debug:
 			print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
@@ -279,11 +279,11 @@ class Disque:
 			for dest,org in zip( self.liste_part, disk.liste_part):
 				#print 'copie depuis %s' % disk.device
 				nombre_fichiers = dest.copy(disk.device, org, nombre_fichiers)
-			update_label(self.label, 'copie terminée')
+			update_label(thread, self.label, 'copie terminée')
 			self.prog_bar.setRange(0, 100)
 			update_bar(self.prog_bar,100)
 		except subprocess.CalledProcessError as erc:
-			update_label(self.label, error=True)
+			update_label(thread, self.label, error=True)
 
 	def compte(self):
 		""" compte le nombre de fichiers à copier dans le disque original """
@@ -319,17 +319,18 @@ class Disque:
 				"  cylindres: {}\n".format(self.nbre_cylindres) +
 				s)
 
-def update_label(label,n='', error=False):
+def update_label(thread, label,n='', error=False):
 	if n != '':
+		#QtCore.emit(thread, tlabelsettext(QString),)
 		label.setText(str(n))
 	if error:
 		label.setStyleSheet("border-radius: 3px;"
                             "background-color: red;")
-	QApplication.processEvents()
+	#QApplication.processEvents()
 
-def update_bar(bar, n):
-	bar.setValue(n)
-	QApplication.processEvents()
+def update_bar(thread, bar, n):
+	bar.setValue(thread, n)
+	#QApplication.processEvents()
 
 def liste_disques():
 	liste = []
