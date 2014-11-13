@@ -176,7 +176,7 @@ class Partition:
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
 
 
-class Disque:
+class Disque(QThread):
 	def lit_disque(self,disk):
 		print(disk)
 		if disk != '':
@@ -194,6 +194,7 @@ class Disque:
 					break
 
 	def __init__(self,disk, sortie_gui, origin=None, option=''):
+		super().__init__()
 		self.device = disk 			# /dev/sdX
 		self.nbre_secteurs = 0		# nbre de secteurs du disque
 		self.nbre_cylindres = 0		# nbre de cylindres
