@@ -20,11 +20,7 @@ from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 
 debug = True
-
-#entree="/dev/sdb"
-#sorties=["/dev/sdc"]
-#partition=entree
-#disques_sortie=[]
+sem_compte = QSemaphore()
 
 class Partition:
 	"""descriptif de chaque partition"""
@@ -176,7 +172,44 @@ class Partition:
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
 
 
-class Disque(QThread):
+class Sortie(QGridLayout, QThread):
+	def __init__(self, disk):
+		QGridLayout.__init__(self)
+		QThread.__init__(self)
+		self.device = disk
+		self.enabled = True
+
+		self.check = QCheckBox(self.device)
+		self.label = QLabel('---')
+		self.prog_bar = QProgressBar()
+		self.addWidget(self.check, 0, 0)
+		self.addWidget(self.label, 0, 1, 1, 3)
+		self.addWidget(self.prog_bar, 0, 4, 1, 2)
+		self.connect(self , SIGNAL("progress(int)"), self.prog_bar , SLOT("setValue(int)"))
+		self.connect(self , SIGNAL("setLabelText(QString)"), self.label , SLOT("setText(QString)"))
+		self.connect(self , SIGNAL("setLabelStyleSheet(QString)"), self.label , SLOT("setStyleSheet(QString)"))
+
+	def enable(self, val):
+		self.check.setEnabled(val)
+		self.label.setEnabled(val)
+		self.prog_bar.setEnabled(val)
+		self.enabled = val
+
+def update_label(thread, label,n='', error=False):
+	if n != '':
+		thread.emit(SIGNAL("setLabelText(QString)"), n)
+		self.emit(SIGNAL("progress(int)"), val)
+		#label.setText(str(n))
+	if error:
+		thread.emit(SIGNAL("setLabelStyleSheet(QString)"), "border-radius: 3px; background-color: red;")
+		#label.setStyleSheet("border-radius: 3px;"
+        #                    "background-color: red;")
+
+def update_bar(thread, n):
+	#bar.setValue(thread, n)
+	thread.emit(SIGNAL("progress(int)"), n)
+
+class Disque(Sortie):
 	def lit_disque(self,disk):
 		print(disk)
 		if disk != '':
@@ -193,9 +226,12 @@ class Disque(QThread):
 					self.taille_cylindre=self.nbre_sect_piste * self.nbre_tetes
 					break
 
-	def __init__(self,disk, sortie_gui, origin=None, option=''):
-		super().__init__()
-		self.device = disk 			# /dev/sdX
+	def __init__(self, disk):
+		#super(Disque,self).__init__()
+		Sortie.__init__(self, disk)
+
+	def init(self, origin=None, option=''):
+		disk.device = disk 			# /dev/sdX
 		self.nbre_secteurs = 0		# nbre de secteurs du disque
 		self.nbre_cylindres = 0		# nbre de cylindres
 		#self.taille_secteur=512
@@ -205,12 +241,10 @@ class Disque(QThread):
 		self.liste_part = []
 		self.mount_option = option
 		self.nbf = 0 				# nbre de fichiers à copier (pour la progress bar)
-		self.label = sortie_gui.label
-		self.prog_bar = sortie_gui.prog_bar
 
 		self.lit_disque(disk)
 		if origin == None:
-			update_label(thread, self.label, 'lecture tbl part de ' + self.device)
+			update_label(self, self.label, 'lecture tbl part de ' + self.device)
 			sfdisk_output = subprocess.check_output(["sfdisk","-d",disk])	# on lit la table de partition du disque
 			for line in sfdisk_output.decode('utf-8').split("\n"):			# on explore ligne par ligne
 				if line.startswith("/"):							# si la ligne commence par un / on doit avoir un /dev/sd???
@@ -273,6 +307,7 @@ class Disque(QThread):
 			self.set_partitions()
 			# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
 			self.mount()
+			sem_compte.aquire()
 			# copie des partitions (sauf le swap)
 			#while self.nbf == 0:		# attend que le nombre de fichiers soit référencé par compte
 			#	pass
@@ -284,7 +319,7 @@ class Disque(QThread):
 			self.prog_bar.setRange(0, 100)
 			update_bar(self.prog_bar,100)
 		except subprocess.CalledProcessError as erc:
-			update_label(thread, self.label, error=True)
+			update_label(self, self.label, error=True)
 
 	def compte(self):
 		""" compte le nombre de fichiers à copier dans le disque original """
@@ -295,6 +330,7 @@ class Disque(QThread):
 		for part in self.liste_part:
 			nombre_fichiers = part.compte(self.label, nombre_fichiers)
 		self.nbf = nombre_fichiers
+		sem_compte.release(50)	# débloquage des autre threads pour la copie
 
 	def mount(self):
 		""" monte les partitions du disque """
@@ -320,18 +356,6 @@ class Disque(QThread):
 				"  cylindres: {}\n".format(self.nbre_cylindres) +
 				s)
 
-def update_label(thread, label,n='', error=False):
-	if n != '':
-		#QtCore.emit(thread, tlabelsettext(QString),)
-		label.setText(str(n))
-	if error:
-		label.setStyleSheet("border-radius: 3px;"
-                            "background-color: red;")
-	#QApplication.processEvents()
-
-def update_bar(thread, bar, n):
-	bar.setValue(thread, n)
-	#QApplication.processEvents()
 
 def liste_disques():
 	liste = []
@@ -341,25 +365,6 @@ def liste_disques():
 			if dev != '/dev/sda':
 				liste.append(dev)
 	return liste
-
-class Sortie(QGridLayout):
-	def __init__(self, disk):
-		QGridLayout.__init__(self)
-		self.device = disk
-		self.enabled = True
-
-		self.check = QCheckBox(disk)
-		self.label = QLabel('---')
-		self.prog_bar = QProgressBar()
-		self.addWidget(self.check, 0, 0)
-		self.addWidget(self.label, 0, 1, 1, 3)
-		self.addWidget(self.prog_bar, 0, 4, 1, 2)
-
-	def enable(self, val):
-		self.check.setEnabled(val)
-		self.label.setEnabled(val)
-		self.prog_bar.setEnabled(val)
-		self.enabled = val
 
 class Fen(QWidget):
 	def __init__(self,parent=None):
@@ -371,21 +376,21 @@ class Fen(QWidget):
 		self.setWindowTitle('Duplication Multiple')
 		self.setMinimumWidth(400)
 
-		self.bouton = QPushButton('Comptage')
-		self.bouton.clicked.connect(self.compte)
+		#self.bouton = QPushButton('Comptage')
+		#self.bouton.clicked.connect(self.compte) ############################## bouton compte inactif
 
-		self.label = QLabel('Nombre de fichiers')
+		#self.label = QLabel('Nombre de fichiers')
 		self.label_org = QLabel('Disque original')
 		self.combo_org = QComboBox()
 
 		self.hbox1 = QHBoxLayout()
 		self.hbox1.addWidget(self.label_org)
 		self.hbox1.addWidget(self.combo_org)
-		self.hbox2 = QHBoxLayout()
-		self.hbox2.addWidget(self.bouton)
-		self.hbox2.addWidget(self.label)
+		#self.hbox2 = QHBoxLayout()
+		#self.hbox2.addWidget(self.bouton)
+		#self.hbox2.addWidget(self.label)
 		self.box.addLayout(self.hbox1)
-		self.box.addLayout(self.hbox2)
+		#self.box.addLayout(self.hbox2)
 
 		self.bsortie = QPushButton("Quitte")
 		self.bstart = QPushButton("Démarrer les copies")
@@ -399,9 +404,9 @@ class Fen(QWidget):
 		self.liste_dev = liste_disques()
 		self.liste_gui = []
 		for dev in self.liste_dev:
-			l=Sortie(dev)
-			self.box.addLayout(l)
-			self.liste_gui.append(l)
+			s=Disque(dev)
+			self.box.addLayout(s)
+			self.liste_gui.append(s)
 
 		self.hbox3 = QHBoxLayout()
 		self.hbox3.addStretch(1)
@@ -418,18 +423,21 @@ class Fen(QWidget):
 		self.disk_entree.compte()
 
 	def start(self):
-		self.compte()
+		#self.compte()
 		disks_out = []
 		disks_copie = []
+		self.disk_entree = self.liste_gui[self.indexIn]
+		self.disk_entree.init(self.liste_dev[self.indexIn], option='ro')
 		for s in self.liste_gui:
 			if s.enabled:
 				if s.check.isChecked():
-					disks_out.append(s.device)
-					disks_copie.append(Thread(target=Disque(s.device, s, origin=self.disk_entree).copy, args = (self.disk_entree,)))
+					disks_out.append(s.device)		# à des fins de test
+					s.init(s.device, origin=self.disk_entree)
+					#disks_copie.append(Thread(target=Disque(s.device, s, origin=self.disk_entree).copy, args = (self.disk_entree,)))
+					disks_copie.append(s)
 		for th in disks_copie:
 			th.start()
-		#self.disk_sortie.copy(self.disk_entree)
-		print(disks_out)
+		print(disks_out)		# à des fins de test
 
 	def change_org(self,val):
 		global entree
@@ -440,10 +448,8 @@ class Fen(QWidget):
 		entree = str(val)
 
 def main(args):
-	#chaque programme doit disposer d'une instance de QApplication gérant l'ensemble des widgets
 	app=QApplication(args)
 	app.setStyle("plastique")
-	#un nouveau bouton
 	fenetre = Fen()
 	fenetre.show()
 	app.exec_()
