@@ -9,22 +9,27 @@ le programme sert à dupliquer un original depuis un disque SSD qui comporte 3 p
 les partitions 1 & 2 sont fixes
 la partition 3 sera variable selon la taille du disque de destination
 
-on impose à la destination d'avoir les même UUID que l'original pour faciliter les configurations
+il n'y a pas de limite au nombre de disques destination
+
+on impose à la destination d'avoir les même UUID que l'original pour ne pas avoir de config à faire sur les copies
+
+nécessite python3 et python3-pyqt4
 """
+
 from threading import Thread
 import sys,os,re
-#from copy import deepcopy
 import subprocess
 import tempfile
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 
-debug = True
+debug = False
 sem_compte = QSemaphore()
 
 class Partition:
 	"""descriptif de chaque partition"""
-	def __init__(self, part, label=None, progressbar=None):
+	def __init__(self, part, parent):
+		self.parent = parent
 		if not isinstance(part,Partition):
 			""" part: /dev/sdXN  ex: /dev/sdb1"""
 			self.device = ''
@@ -36,8 +41,6 @@ class Partition:
 			self.filesytem = ''
 			self.uuid 	= ''
 			self.nbf 	= 0 			# nombre de fichiers de la partition
-			self.label 	= label
-			self.prog_bar = progressbar
 
 			self.mounted = ''		# représente le répertoire monté de cette partition
 			#parts = re.compile(r"^\D+([0-9]*).*start= *([0-9]*).*size= *([0-9]*).*Id= *([0-9]*),? ?([a-zA-Z]*)?").search(part)
@@ -46,8 +49,8 @@ class Partition:
 			self.npart= int(self.npart)
 			self.start= int(self.start)
 			self.size = int(self.size)
-			update_label(thread, self.label, 'lecture UUID')
-			
+			update_label(self.parent, 'lecture UUID')
+
 			if self.size != 0:
 				p = subprocess.check_output(["blkid",self.device+str(self.npart)])
 				blkid = p.decode('utf-8').split('\n')[0]
@@ -55,6 +58,7 @@ class Partition:
 					rex = re.compile(r"UUID=\"([^\"]*)\" TYPE=\"([^\"]*)\"")
 					resultat = rex.search(blkid)
 					self.uuid, self.filesytem = resultat.groups()
+					print('uuid = {}  et fstype = {}'.format(self.uuid,self.filesytem))
 
 		else:
 			""" ici part est une partition dont on doit faire une copie """
@@ -66,8 +70,7 @@ class Partition:
 			self.filesytem = part.filesytem
 			self.uuid  = part.uuid
 			self.nbf   = part.nbf 			# nombre de fichiers de la partition
-			self.label = label
-			self.prog_bar = progressbar
+
 
 			self.mounted = ''		# représente le répertoire monté de cette partition
 
@@ -85,13 +88,13 @@ class Partition:
 		""" formatte la partition en mettant l'UUID d'origine """
 		#print('formatte partition {}{}'.format(device, self.npart))
 		if self.Id == '82':
-			update_label(thread, self.label, 'creation swap sur %s%s' % (device, self.npart))
+			update_label(self.parent, 'creation swap sur %s%s' % (device, self.npart))
 			if debug:
 				print ('crée le swap sur {}{}'.format(device, self.npart))
 			p = subprocess.Popen(['mkswap','-U',self.uuid,device+str(self.npart)])
 			p.wait()
 		elif self.Id == '83':
-			update_label(thread, self.label, 'formattage %s%s' % (device, self.npart))
+			update_label(self.parent, 'formattage %s%s' % (device, self.npart))
 			if debug:
 				print ('crée la partition en {} sur {}{}'.format(self.filesytem, device, self.npart))
 			p = subprocess.Popen(['mkfs.'+self.filesytem,'-U',self.uuid,device+str(self.npart)])
@@ -102,7 +105,7 @@ class Partition:
 		if self.mounted == '':
 			if self.Id == '83':
 				self.part = device + str(self.npart)
-				update_label(thread, self.label, 'montage de ' + self.part)
+				update_label(self.parent, 'montage de ' + self.part)
 				self.mounted = tempfile.mkdtemp()
 				if debug:
 					print('monte la partition {} dans {}'.format(self.part, self.mounted))
@@ -128,7 +131,7 @@ class Partition:
 		""" copie depuis la partition part vers la partition courante """
 		# on monte la partition
 		self.mount(device)
-		update_label(thread, self.label, 'copie depuis %s%s' % (device, self.npart))
+		update_label(self.parent, 'copie depuis %s%s' % (device, self.npart))
 		if self.mounted:
 			if debug:
 				print('copie depuis la partition {} vers {}'.format(part.part, self.part))
@@ -136,12 +139,12 @@ class Partition:
 			p = subprocess.Popen(['rsync', '-axHAXP', part.mounted+'/', self.mounted], stdout=subprocess.PIPE)
 			c = 0
 			for line in p.stdout:
-				if not line.decode('utf-8').startswith(" "):
+				if line.decode('utf-8')[:1] != '\r':
 					#print(line)
 					nbfichiers += 1
 					c += 1
 					if c==100:
-						update_bar(self.prog_bar, nbfichiers)
+						update_bar(self.parent, nbfichiers)
 						c = 0
 			#update_bar(self.prog_bar, nbfichiers)
 			p.wait()
@@ -158,9 +161,9 @@ class Partition:
 				self.nbf += 1
 				c += 1
 				if c==123:
-					update_label(thread, label, nbfichiers+self.nbf)
+					update_label(self.parent, str(nbfichiers+self.nbf))
 					c = 0
-			update_label(thread, label, '%s fichiers' % (self.nbf+nbfichiers))
+			update_label(self.parent, '%s fichiers' % (self.nbf+nbfichiers))
 			p.wait()
 			errcode = p.returncode
 		return self.nbf+nbfichiers
@@ -172,7 +175,7 @@ class Partition:
 		return 'Partition %s, start=%8s, size=%8s, Id=%2s, filesytem=%6s%s, UUID=%s' % (self.npart, self.start, self.size, self.Id, self.filesytem, ', bootable' if self.bootable else '          ', self.uuid)
 
 
-class Sortie(QGridLayout, QThread):
+class Sortie(QThread):
 	def __init__(self, disk):
 		QGridLayout.__init__(self)
 		QThread.__init__(self)
@@ -182,12 +185,13 @@ class Sortie(QGridLayout, QThread):
 		self.check = QCheckBox(self.device)
 		self.label = QLabel('---')
 		self.prog_bar = QProgressBar()
-		self.addWidget(self.check, 0, 0)
-		self.addWidget(self.label, 0, 1, 1, 3)
-		self.addWidget(self.prog_bar, 0, 4, 1, 2)
-		self.connect(self , SIGNAL("progress(int)"), self.prog_bar , SLOT("setValue(int)"))
-		self.connect(self , SIGNAL("setLabelText(QString)"), self.label , SLOT("setText(QString)"))
-		self.connect(self , SIGNAL("setLabelStyleSheet(QString)"), self.label , SLOT("setStyleSheet(QString)"))
+		self.box = QGridLayout()
+		self.box.addWidget(self.check, 0, 0)
+		self.box.addWidget(self.label, 0, 1, 1, 3)
+		self.box.addWidget(self.prog_bar, 0, 4, 1, 2)
+		self.box.connect(self , SIGNAL("progress(int)"), self.prog_bar , SLOT("setValue(int)"))
+		self.box.connect(self , SIGNAL("setLabelText(QString)"), self.label , SLOT("setText(QString)"))
+		self.box.connect(self , SIGNAL("setLabelStyleSheet(QString)"), self.label , SLOT("setStyleSheet(QString)"))
 
 	def enable(self, val):
 		self.check.setEnabled(val)
@@ -195,10 +199,10 @@ class Sortie(QGridLayout, QThread):
 		self.prog_bar.setEnabled(val)
 		self.enabled = val
 
-def update_label(thread, label,n='', error=False):
-	if n != '':
-		thread.emit(SIGNAL("setLabelText(QString)"), n)
-		self.emit(SIGNAL("progress(int)"), val)
+def update_label(thread, text=None, error=False):
+	if text != None:
+		thread.emit(SIGNAL("setLabelText(QString)"), text)
+		#thread.emit(SIGNAL("progress(int)"), val)
 		#label.setText(str(n))
 	if error:
 		thread.emit(SIGNAL("setLabelStyleSheet(QString)"), "border-radius: 3px; background-color: red;")
@@ -211,7 +215,6 @@ def update_bar(thread, n):
 
 class Disque(Sortie):
 	def lit_disque(self,disk):
-		print(disk)
 		if disk != '':
 			#s=commands.getoutput("fdisk -l %s" % disk)
 			for l in subprocess.check_output(['fdisk','-l',disk]).decode('utf-8').split('\n'):
@@ -227,11 +230,13 @@ class Disque(Sortie):
 					break
 
 	def __init__(self, disk):
-		#super(Disque,self).__init__()
-		Sortie.__init__(self, disk)
+		super(Disque,self).__init__(disk)
+		#Sortie.__init__(self, disk)
+		self.device = disk 			# /dev/sdX
 
 	def init(self, origin=None, option=''):
-		disk.device = disk 			# /dev/sdX
+		print('init de {}'.format(self.device))
+		#disk.device = disk 			# /dev/sdX
 		self.nbre_secteurs = 0		# nbre de secteurs du disque
 		self.nbre_cylindres = 0		# nbre de cylindres
 		#self.taille_secteur=512
@@ -241,18 +246,22 @@ class Disque(Sortie):
 		self.liste_part = []
 		self.mount_option = option
 		self.nbf = 0 				# nbre de fichiers à copier (pour la progress bar)
+		self.original = True		# si True, il s'agit du disque original
+		self.disk = None			# est le Disque original
 
-		self.lit_disque(disk)
+		self.lit_disque(self.device)
 		if origin == None:
-			update_label(self, self.label, 'lecture tbl part de ' + self.device)
-			sfdisk_output = subprocess.check_output(["sfdisk","-d",disk])	# on lit la table de partition du disque
+			update_label(self, 'lecture tbl part de ' + self.device)
+			sfdisk_output = subprocess.check_output(["sfdisk","-d",self.device])	# on lit la table de partition du disque
 			for line in sfdisk_output.decode('utf-8').split("\n"):			# on explore ligne par ligne
 				if line.startswith("/"):							# si la ligne commence par un / on doit avoir un /dev/sd???
-					p = Partition(line,self.label,self.prog_bar)
+					p = Partition(line, parent=self)
 					if p.taille() != 0:								# si la partition n'est pas vide
 						self.liste_part.append(p)
 		else :
-			self.liste_part = [ Partition(part, self.label, self.prog_bar) for part in origin.liste_part ]
+			self.original = False
+			self.disk = origin
+			self.liste_part = [ Partition(part, parent=self) for part in origin.liste_part ]
 			self.liste_part[-1].size = 0						# on annule la taille de la dernière partition, ce qui permettra d'étendre cette partition autant que nécessaire
 
 	def sfdisk_conv(self):
@@ -274,7 +283,7 @@ class Disque(Sortie):
 		""" copie le MBR et le stage1 de grub depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
 		# et aussi tous les secteurs soit-disant libre avant la première partition
-		update_label(thread, self.label, 'copie du MBR et GRUB stage1')
+		update_label(self, 'copie du MBR et GRUB stage1')
 		nbs=disk.liste_part[0].start
 		if debug:
 			print('écrase le secteur MBR du disque %s par %s' %(self.device,disk.device))
@@ -284,9 +293,8 @@ class Disque(Sortie):
 		#p.wait()
 
 	def set_partitions(self):
-		#print('crée une nouvelle table de partitions sur {}'.format(self.device))
+		""" crée une nouvelle table de partitions sur le device courant """
 		instructions = self.sfdisk_conv()
-		print(instructions)
 		command = ["sfdisk", self.device ]
 		pobj = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 		(output, errors) = pobj.communicate(instructions.encode('utf-8'))
@@ -296,30 +304,26 @@ class Disque(Sortie):
 		for p in self.liste_part:
 			p.format(self.device)
 
-	def copy(self, disk):
+	def copy(self):
 		""" on fait la copie depuis disk vers le disque courant """
-		#print('copie')
 		nombre_fichiers = 0
 		try:
 			# copie du mbr
-			self.copy_mbr(disk)
+			self.copy_mbr(self.disk)
 			# conversion des partitions pour le disque courant, formattage des partitions
 			self.set_partitions()
 			# on s'assure que le disque courant est monté. Le disque original a déjà été monté auparavant
 			self.mount()
-			sem_compte.aquire()
+			sem_compte.acquire()	# attend la fin du comptage de nombre de fichiers
 			# copie des partitions (sauf le swap)
-			#while self.nbf == 0:		# attend que le nombre de fichiers soit référencé par compte
-			#	pass
-			self.prog_bar.setRange(0, disk.nbf)
-			for dest,org in zip( self.liste_part, disk.liste_part):
-				#print 'copie depuis %s' % disk.device
-				nombre_fichiers = dest.copy(disk.device, org, nombre_fichiers)
-			update_label(thread, self.label, 'copie terminée')
+			self.prog_bar.setRange(0, self.disk.nbf)
+			for dest,org in zip( self.liste_part, self.disk.liste_part):
+				nombre_fichiers = dest.copy(self.disk.device, org, nombre_fichiers)
+			update_label(self, 'copie terminée')
 			self.prog_bar.setRange(0, 100)
-			update_bar(self.prog_bar,100)
+			update_bar(self, 100)
 		except subprocess.CalledProcessError as erc:
-			update_label(self, self.label, error=True)
+			update_label(self, error=True)
 
 	def compte(self):
 		""" compte le nombre de fichiers à copier dans le disque original """
@@ -331,6 +335,15 @@ class Disque(Sortie):
 			nombre_fichiers = part.compte(self.label, nombre_fichiers)
 		self.nbf = nombre_fichiers
 		sem_compte.release(50)	# débloquage des autre threads pour la copie
+
+	def run(self):
+		print('run')
+		print(self.original)
+		if self.original == True:
+			self.compte()
+		else:
+			self.copy()
+
 
 	def mount(self):
 		""" monte les partitions du disque """
@@ -405,7 +418,7 @@ class Fen(QWidget):
 		self.liste_gui = []
 		for dev in self.liste_dev:
 			s=Disque(dev)
-			self.box.addLayout(s)
+			self.box.addLayout(s.box)
 			self.liste_gui.append(s)
 
 		self.hbox3 = QHBoxLayout()
@@ -426,17 +439,25 @@ class Fen(QWidget):
 		#self.compte()
 		disks_out = []
 		disks_copie = []
+
+		self.bstart.setEnabled(False)
 		self.disk_entree = self.liste_gui[self.indexIn]
-		self.disk_entree.init(self.liste_dev[self.indexIn], option='ro')
+		self.disk_entree.init(option='ro')
+
 		for s in self.liste_gui:
 			if s.enabled:
 				if s.check.isChecked():
 					disks_out.append(s.device)		# à des fins de test
-					s.init(s.device, origin=self.disk_entree)
+					s.init(origin=self.disk_entree)
 					#disks_copie.append(Thread(target=Disque(s.device, s, origin=self.disk_entree).copy, args = (self.disk_entree,)))
 					disks_copie.append(s)
+		self.disk_entree.start()
+		self.disk_entree.finished.connect(self.thread_fini)
+		self.nbthreads = 1
 		for th in disks_copie:
 			th.start()
+			self.nbthreads += 1
+			th.finished.connect(self.thread_fini)
 		print(disks_out)		# à des fins de test
 
 	def change_org(self,val):
@@ -446,6 +467,11 @@ class Fen(QWidget):
 		self.indexIn = self.combo_org.currentIndex()
 		self.liste_gui[self.indexIn].enable(False)
 		entree = str(val)
+
+	def thread_fini(self):
+		self.nbthreads -= 1
+		if self.nbthreads == 0:
+			self.bsortie.setStyleSheet("QPushButton { color: white; background-color: green; }")
 
 def main(args):
 	app=QApplication(args)
