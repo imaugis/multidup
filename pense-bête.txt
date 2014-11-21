@@ -1,9 +1,0 @@
-disque d'origine :
-
-taille d'un secteur
-nombre de secteurs du disque
-taille du disque
-nombre de partitions.
-    taille de chaque partition
-    si partition 83 -> lire le UUID et le type de système de fichier avec blkid
-

@@ -320,8 +320,8 @@ class Disque(Sortie):
 			for dest,org in zip( self.liste_part, self.disk.liste_part):
 				nombre_fichiers = dest.copy(self.disk.device, org, nombre_fichiers)
 			update_label(self, 'copie terminée')
-			self.prog_bar.setRange(0, 100)
-			update_bar(self, 100)
+			#self.prog_bar.setRange(0, 100)
+			#update_bar(self, 100)
 		except subprocess.CalledProcessError as erc:
 			update_label(self, error=True)
 
