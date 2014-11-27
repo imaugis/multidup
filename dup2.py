@@ -189,9 +189,10 @@ class Sortie(QThread):
 		self.box.addWidget(self.check, 0, 0)
 		self.box.addWidget(self.label, 0, 1, 1, 3)
 		self.box.addWidget(self.prog_bar, 0, 4, 1, 2)
-		self.box.connect(self , SIGNAL("progress(int)"), self.prog_bar , SLOT("setValue(int)"))
+		self.box.connect(self , SIGNAL("setValue(int)"), self.prog_bar , SLOT("setValue(int)"))
 		self.box.connect(self , SIGNAL("setLabelText(QString)"), self.label , SLOT("setText(QString)"))
 		self.box.connect(self , SIGNAL("setLabelStyleSheet(QString)"), self.label , SLOT("setStyleSheet(QString)"))
+		self.box.connect(self , SIGNAL("setRange(int,int)"), self.prog_bar, SLOT("setRange(int,int)"))
 
 	def enable(self, val):
 		self.check.setEnabled(val)
@@ -209,9 +210,13 @@ def update_label(thread, text=None, error=False):
 		#label.setStyleSheet("border-radius: 3px;"
         #                    "background-color: red;")
 
-def update_bar(thread, n):
+def update_bar(thread, n=0, setRange=None):
 	#bar.setValue(thread, n)
-	thread.emit(SIGNAL("progress(int)"), n)
+	if setRange:
+		thread.emit(SIGNAL("setRange(int,int)"),0,setRange)
+	else:
+		thread.emit(SIGNAL("setValue(int)"), n)
+
 
 class Disque(Sortie):
 	def lit_disque(self,disk):
@@ -316,12 +321,12 @@ class Disque(Sortie):
 			self.mount()
 			sem_compte.acquire()	# attend la fin du comptage de nombre de fichiers
 			# copie des partitions (sauf le swap)
-			self.prog_bar.setRange(0, self.disk.nbf)
+			update_bar(self, setRange=self.disk.nbf)
 			for dest,org in zip( self.liste_part, self.disk.liste_part):
 				nombre_fichiers = dest.copy(self.disk.device, org, nombre_fichiers)
 			update_label(self, 'copie terminée')
-			#self.prog_bar.setRange(0, 100)
-			#update_bar(self, 100)
+			update_bar(self, setRange=100)	# on met la barre à 100%
+			update_bar(self, 100)
 		except subprocess.CalledProcessError as erc:
 			update_label(self, error=True)
 
@@ -471,6 +476,8 @@ class Fen(QWidget):
 	def thread_fini(self):
 		self.nbthreads -= 1
 		if self.nbthreads == 0:
+			p = subprocess.Popen(['sync'])	# on vide les buffers disque
+			p.wait()
 			self.bsortie.setStyleSheet("QPushButton { color: white; background-color: green; }")
 
 def main(args):
