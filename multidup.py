@@ -285,7 +285,7 @@ class Disque(Sortie):
 	def copy_mbr(self,disk):
 		""" copie le MBR et le stage1 de grub depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
-		# et aussi tous les secteurs soit-disant libre avant la première partition
+		# et aussi tous les secteurs soit-disant libres avant la première partition
 		update_label(self, 'copie du MBR et GRUB stage1')
 		nbs=disk.liste_part[0].start
 		if debug:
@@ -408,13 +408,15 @@ class Fen(QWidget):
 			self.box.addLayout(s.box)		# et on ajoute la partie graphique à l'interface
 			self.liste_gui.append(s)
 
+		self.liste_gui[0].enable(False)		# interdit le premier disque dans le gui
+
 		self.hbox3 = QHBoxLayout()
 		self.hbox3.addStretch(1)			# le bouton sera à droite
 		self.hbox3.addWidget(self.bsortie)
 		self.box.addLayout(self.hbox3)
 		self.setLayout(self.box)
 
-		self.combo_org.addItems(self.liste_dev)	# init de la liste des disque originaux
+		self.combo_org.addItems(self.liste_dev)				# init de la liste des disque originaux
 		self.combo_org.currentIndexChanged[str].connect(self.change_org)
 		#self.change_org(self.liste_dev[0])
 
@@ -453,7 +455,7 @@ class Fen(QWidget):
 		et passer le bouton «Quitte» en vert """
 		self.nbthreads -= 1
 		if self.nbthreads == 0:
-			p = subprocess.Popen(['sync'])	# on flush les buffers disque
+			p = subprocess.Popen(['sync'])					# on flush les buffers disque
 			p.wait()
 			self.bsortie.setStyleSheet("QPushButton { color: white; background-color: green; }")
 
