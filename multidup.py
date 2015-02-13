@@ -471,7 +471,7 @@ class Fen(QWidget):
 def check_commands():
 	""" vérifie la présence des commandes système utilisées """
 	erreur = False
-	for com,param in (('dd','--version'),('sfdisk','-v'),('fdisk','-v'),('mkswap','--version'),('mount','--version')):
+	for com,param in (('dd','--version'),('sfdisk','-v'),('sgdisk','--version'),('fdisk','-v'),('mkswap','--version'),('mount','--version')):
 		try:
 			subprocess.check_output([com,param])
 		except FileNotFoundError:
