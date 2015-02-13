@@ -282,6 +282,14 @@ class Disque(Sortie):
 				s += '{}{} : start= 0, size= 0, Id= 0\n'.format(self.device, n)
 		return s
 
+	def kill_gpt(self):
+		""" supprime toute forme de GPT sur le disque courant """
+		# on efface du disque tout ce qui concerne GPT
+		update_label(self, 'supprime GPT')
+		if debug:
+			print('écrase le GPT du disque %s par %s' %(self.device,disk.device))
+		subprocess.call(['sgdisk','--zap',self.device])
+
 	def copy_mbr(self,disk):
 		""" copie le MBR et le stage1 de grub depuis le disk vers le disque courant """
 		# on copie le secteur 0 complet, en écrasant la table de partition
@@ -308,6 +316,7 @@ class Disque(Sortie):
 		""" on fait la copie depuis disk vers le disque courant """
 		nombre_fichiers = 0
 		try:
+			self.kill_gpt()
 			self.copy_mbr(self.disk)					# copie du MBR et du GRUB
 			self.set_partitions()						# conversion des partitions pour le disque courant, formattage des partitions
 			self.mount()								# monte les partitions du disque courant. Le disque original a déjà été monté auparavant
