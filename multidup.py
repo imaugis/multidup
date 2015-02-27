@@ -381,6 +381,7 @@ def liste_disques():
 			dev = line.split(':')[0]				# on sépare le /dev/sd?
 			if dev != '/dev/sda':
 				liste.append(dev)
+	liste.sort()									# trie les disques par ordre sda,sdb…
 	return liste
 
 class Fen(QWidget):
