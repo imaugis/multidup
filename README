@@ -11,5 +11,5 @@ Le logiciel s'attend à un format particulier :
 Il n'y a pas de limite au nombre de disques destination.
 On impose à la destination d'avoir les même UUID que l'original pour ne pas avoir de configuration à faire sur les copies.
 
-Le logiciel utilise python3, python3-pyqt4, sfdisk, dd, mount, umount, mkfs.ext?, mkswap
+Le logiciel utilise python3, python3-pyqt4, sfdisk, sgdisk, dd, mount, umount, mkfs.ext?, mkswap
 
